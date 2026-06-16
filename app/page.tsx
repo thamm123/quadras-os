@@ -32,6 +32,32 @@ const Ico = {
   empty:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 15s1.5-2 4-2 4 2 4 2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>,
 }
 
+// ── Module-level constants ────────────────────────────────────────────────
+const DEFAULT_READINESS=[
+  {id:'produkt',    label:'Produkt freigegeben'},
+  {id:'bulk',       label:'Bulk-Order ausgelöst'},
+  {id:'packaging',  label:'Packaging bestellt'},
+  {id:'shopify',    label:'Shopify live'},
+  {id:'checkout',   label:'Checkout getestet'},
+  {id:'rechtlich',  label:'AGB & Impressum live'},
+  {id:'fotos',      label:'Produktfotos fertig'},
+  {id:'newsletter', label:'Newsletter aktiv'},
+  {id:'content',    label:'Launch-Content bereit'},
+  {id:'support',    label:'Support & Retouren bereit'},
+]
+const DEFAULT_BRAND=[
+  {id:'website_premium',  label:'Website wirkt premium'},
+  {id:'texte_quadras',    label:'Produkttexte klingen nach QUADRAS'},
+  {id:'packaging_brand',  label:'Packaging wirkt ruhig & hochwertig'},
+  {id:'hangtags_brand',   label:'Hangtags passen zur Materialwelt'},
+  {id:'foto_sprache',     label:'Fotosprache ist definiert'},
+  {id:'social_look',      label:'Social Grid Look ist konsistent'},
+  {id:'patch_story',      label:'Patch-System wird verständlich erklärt'},
+  {id:'farben_final',     label:'Farben & Typografie sind final'},
+  {id:'founder_story',    label:'Founder Edition Story ist klar'},
+  {id:'no_cheap_vibes',   label:'Kein Dropshipping-Feeling irgendwo'},
+]
+
 export default function App() {
   const [view,        setView]        = useState<View>('heute')
   const [aktiv,       setAktiv]       = useState<PersonName>('Alexander')
@@ -734,30 +760,6 @@ export default function App() {
     const brandDone=BRAND_ITEMS.filter(i=>brandReadiness[i.id]).length
     const brandPct=Math.round(brandDone/BRAND_ITEMS.length*100)
     const brandColor=brandPct<50?'var(--red)':brandPct<80?'var(--amber)':'var(--signal)'
-    const DEFAULT_READINESS=[
-      {id:'produkt',    label:'Produkt freigegeben'},
-      {id:'bulk',       label:'Bulk-Order ausgelöst'},
-      {id:'packaging',  label:'Packaging bestellt'},
-      {id:'shopify',    label:'Shopify live'},
-      {id:'checkout',   label:'Checkout getestet'},
-      {id:'rechtlich',  label:'AGB & Impressum live'},
-      {id:'fotos',      label:'Produktfotos fertig'},
-      {id:'newsletter', label:'Newsletter aktiv'},
-      {id:'content',    label:'Launch-Content bereit'},
-      {id:'support',    label:'Support & Retouren bereit'},
-    ]
-    const DEFAULT_BRAND=[
-      {id:'website_premium',  label:'Website wirkt premium'},
-      {id:'texte_quadras',    label:'Produkttexte klingen nach QUADRAS'},
-      {id:'packaging_brand',  label:'Packaging wirkt ruhig & hochwertig'},
-      {id:'hangtags_brand',   label:'Hangtags passen zur Materialwelt'},
-      {id:'foto_sprache',     label:'Fotosprache ist definiert'},
-      {id:'social_look',      label:'Social Grid Look ist konsistent'},
-      {id:'patch_story',      label:'Patch-System wird verständlich erklärt'},
-      {id:'farben_final',     label:'Farben & Typografie sind final'},
-      {id:'founder_story',    label:'Founder Edition Story ist klar'},
-      {id:'no_cheap_vibes',   label:'Kein Dropshipping-Feeling irgendwo'},
-    ]
     // Load custom labels from readiness/brandReadiness objects (stored as label_XXX keys)
     const READINESS_ITEMS=DEFAULT_READINESS.map(i=>({...i,label:readiness['label_'+i.id]||i.label}))
     const readinessDone=READINESS_ITEMS.filter(i=>readiness[i.id]).length
