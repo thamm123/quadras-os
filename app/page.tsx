@@ -503,7 +503,7 @@ export default function App() {
   // ── Modals ─────────────────────────────────────────────────────────────────
   function AufgabeModal() {
     const isEdit=!!editA?.id
-    const [f,setF]=useState({titel:editA?.titel||'',beschreibung:editA?.beschreibung||'',person:editA?.person||aktiv,projekt:editA?.projekt||PROJEKTE[0],prioritaet:editA?.prioritaet||'Normal',status:editA?.status||'Offen',deadline:editA?.deadline||'',ergebnis:editA?.ergebnis||'',blocker:editA?.blocker||''})
+    const [f,setF]=useState({titel:editA?.titel||'',beschreibung:editA?.beschreibung||'',person:editA?.person||aktiv,projekt:editA?.projekt||PROJEKTE[0],prioritaet:editA?.prioritaet||'Normal',status:editA?.status||'Offen',deadline:editA?.deadline||'',ergebnis:editA?.ergebnis||'',blocker:editA?.blocker||'',nummer:editA?.nummer?.toString()||''})
     const [errors,setErrors]=useState<Record<string,string>>({})
     const [saving,setSaving]=useState(false)
     const up=(k:string,v:string)=>{setF(p=>({...p,[k]:v}));setErrors(e=>({...e,[k]:''})) }
@@ -516,7 +516,7 @@ export default function App() {
     }
     const save=async()=>{
       if(!validate()) return; setSaving(true)
-      const data={...f,deadline:safeDate(f.deadline),beschreibung:f.beschreibung||'',blocker:f.blocker||''}
+      const data={...f,deadline:safeDate(f.deadline),beschreibung:f.beschreibung||'',blocker:f.blocker||'',nummer:f.nummer?parseInt(f.nummer):null}
       if(isEdit){
         const {error}=await supabase.from('aufgaben').update(data).eq('id',editA!.id)
         if(error){toast('Fehler: '+error.message,'error');setSaving(false);return}
@@ -533,7 +533,10 @@ export default function App() {
         <div className="modal">
           <div className="modal-header"><span className="modal-title">{isEdit?'Aufgabe bearbeiten':'Neue Aufgabe'}</span><button className="modal-close" onClick={()=>setModal(null)}>{Ico.x}</button></div>
           <div className="modal-body">
-            <div className="form-group"><label className="form-label">Aufgabe *</label><input autoFocus required className={`form-input${errors.titel?' error':''}`} placeholder="Aktionsverb + konkretes Ziel" value={f.titel} onChange={e=>up('titel',e.target.value)}/>{errors.titel&&<div className="form-error">{errors.titel}</div>}</div>
+            <div className="form-row">
+              <div className="form-group" style={{flex:3}}><label className="form-label">Aufgabe *</label><input autoFocus required className={`form-input${errors.titel?' error':''}`} placeholder="Aktionsverb + konkretes Ziel" value={f.titel} onChange={e=>up('titel',e.target.value)}/>{errors.titel&&<div className="form-error">{errors.titel}</div>}</div>
+              <div className="form-group" style={{flex:1}}><label className="form-label">Nummer</label><input className="form-input" type="number" min="1" placeholder="z.B. 01" value={f.nummer} onChange={e=>up('nummer',e.target.value)}/></div>
+            </div>
             <div className="form-group"><label className="form-label">Details</label><textarea className="form-input" placeholder="Kontext, Links, Hinweise..." value={f.beschreibung} onChange={e=>up('beschreibung',e.target.value)}/></div>
             <div className="form-row">
               <div className="form-group"><label className="form-label">Verantwortlich *</label><select required className="form-input" value={f.person} onChange={e=>up('person',e.target.value)}>{PERSONEN.map(p=><option key={p.name}>{p.name}</option>)}</select></div>
@@ -827,6 +830,7 @@ export default function App() {
     const [newPerson, setNewPerson] = useState<PersonName>('Alexander')
     const [newDeadline, setNewDeadline] = useState('')
     const [newErgebnis, setNewErgebnis] = useState('')
+    const [newNummer, setNewNummer] = useState('')
     const [addingH, setAddingH] = useState(false)
 
     const addHauptaufgabe = async () => {
@@ -834,17 +838,17 @@ export default function App() {
       if(!newDeadline) return
       if(!newErgebnis.trim()) return
       setAddingH(true)
-      const nextNr = Math.max(0,...hauptaufgaben.map(a=>a.nummer||0)) + 1
+      const nummerWert = newNummer ? parseInt(newNummer) : Math.max(0,...hauptaufgaben.map(a=>a.nummer||0)) + 1
       const nextSort = Math.max(0,...hauptaufgaben.filter(a=>a.phase===newPhase).map(a=>a.sortierung||0)) + 1
       await supabase.from('aufgaben').insert({
-        nummer: nextNr, titel: newTitel.trim(), person: newPerson,
+        nummer: nummerWert, titel: newTitel.trim(), person: newPerson,
         projekt: 'Organisation', prioritaet: 'Hoch', status: 'Offen',
         deadline: newDeadline, ergebnis: newErgebnis.trim(),
         phase: newPhase, sortierung: nextSort,
         ist_hauptaufgabe: true, beschreibung: '', blocker: '',
         parent_id: null, completed_at: null
       })
-      setNewTitel(''); setNewDeadline(''); setNewErgebnis('')
+      setNewTitel(''); setNewDeadline(''); setNewErgebnis(''); setNewNummer('')
       setAddingH(false); setShowAddPhase(false)
       toast('Hauptaufgabe hinzugefügt', 'success')
     }
@@ -872,6 +876,10 @@ export default function App() {
                 <select className="form-input" value={newPerson} onChange={e=>setNewPerson(e.target.value as PersonName)}>
                   {PERSONEN.map(p=><option key={p.name}>{p.name}</option>)}
                 </select>
+              </div>
+              <div className="form-group" style={{marginBottom:0}}>
+                <label className="form-label">Nummer</label>
+                <input type="number" min="1" className="form-input" placeholder="z.B. 01" value={newNummer} onChange={e=>setNewNummer(e.target.value)}/>
               </div>
               <div className="form-group" style={{marginBottom:0}}>
                 <label className="form-label">Deadline *</label>
