@@ -11,6 +11,7 @@ import {
 type View = 'heute'|'plan'|'aufgaben'|'design'|'dateien'|'entscheidungen'
 type Toast = { id:number; msg:string; type:'default'|'success'|'error' }
 type ActivityEntry = { id:string; entity_type:string; entity_titel:string; action:string; person:string; created_at:string }
+type Risiko = { id:string; titel:string; wahrscheinlichkeit:string; impact:string; gegenmasnahme:string; owner:string; status:string; created_at:string }
 let toastId = 0
 
 const Ico = {
@@ -54,6 +55,32 @@ export default function App() {
   const [fStatus,setFStatus]=useState('Offen')
   const [fDKat,setFDKat]=useState('Alle')
   const [fDFG,setFDFG]=useState('Alle')
+  const [weeklyMission, setWeeklyMission] = useState('')
+  const [missionEdit, setMissionEdit] = useState(false)
+  const [missionDraft, setMissionDraft] = useState('')
+  const [readiness, setReadiness] = useState<Record<string,boolean>>({})
+  const [brandReadiness, setBrandReadiness] = useState<Record<string,boolean>>({})
+  const [risiken, setRisiken] = useState<Risiko[]>([])
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
+
+
+
+  // Load team settings from Supabase (shared across all team members)
+  const loadSettings = useCallback(async()=>{
+    const [ms, ls, bs, rs] = await Promise.all([
+      supabase.from('team_settings').select('*').eq('id','weekly_mission').single(),
+      supabase.from('team_settings').select('*').eq('id','launch_readiness').single(),
+      supabase.from('team_settings').select('*').eq('id','brand_readiness').single(),
+      supabase.from('risiken').select('*').order('created_at',{ascending:false}),
+    ])
+    if(ms.data?.value?.text) setWeeklyMission(ms.data.value.text)
+    if(ls.data?.value) setReadiness(ls.data.value)
+    if(bs.data?.value) setBrandReadiness(bs.data.value)
+    if(rs.data) setRisiken(rs.data)
+    setSettingsLoaded(true)
+  },[])
+
+  useEffect(()=>{ loadSettings() },[loadSettings])
 
   const toast = useCallback((msg:string,type:Toast['type']='default')=>{
     const id=++toastId; setToasts(t=>[...t,{id,msg,type}])
@@ -83,10 +110,15 @@ export default function App() {
   },[loadActivity])
 
   useEffect(()=>{ loadAll() },[loadAll])
+  useEffect(()=>{ loadSettings() },[loadSettings])
 
   // Optimised realtime — diff injection
   useEffect(()=>{
     const ch=supabase.channel('quadras-v7')
+      .on('postgres_changes',{event:'*',schema:'public',table:'team_settings'},()=>loadSettings())
+      .on('postgres_changes',{event:'*',schema:'public',table:'risiken'},()=>{
+        supabase.from('risiken').select('*').order('created_at',{ascending:false}).then(({data})=>{if(data)setRisiken(data)})
+      })
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'aufgaben'},({new:n})=>{
         setAufgaben(prev=>[n as Aufgabe,...prev])
       })
@@ -685,28 +717,115 @@ export default function App() {
   function HeuteView() {
     const ap=PERSONEN.find(p=>p.name===aktiv)!
 
-    // Executive summary computed values
+    // Executive summary
     const gesamtPct=hauptaufgaben.length>0?Math.round(hauptaufgaben.filter(a=>a.status==='Erledigt').length/hauptaufgaben.length*100):0
     const launchStatus=ueberfaellig>3||gesamtPct<30?'rot':ueberfaellig>0||gesamtPct<70?'gelb':'gruen'
     const statusColor={'rot':'var(--red)','gelb':'var(--amber)','gruen':'var(--signal)'}[launchStatus]
-    const statusText={'rot':'Rot — Sofort handeln','gelb':'Gelb — Im Plan, aber Risiken','gruen':'Grün — Auf Kurs'}[launchStatus]
-
-    // Blocker tasks
+    const statusText={'rot':'Rot — Sofort handeln','gelb':'Gelb — Im Plan, Risiken vorhanden','gruen':'Grün — Auf Kurs'}[launchStatus]
     const blockerAufgaben=aufgaben.filter(a=>a.blocker&&a.blocker.trim()!==''&&a.status!=='Erledigt')
-
-    // Design awaiting feedback
     const designFeedbackOffen=ideen.filter(i=>i.status==='Feedback ausstehend'||i.freigabe==='Überarbeiten')
-
-    // Open decisions
-    const offeneEntscheidungen=entscheid.slice(0,3)
-
-    // Timeline — ALL tasks in next 7 days including done
+    const offeneEntscheidungen=entscheid.slice(0,5)
     const alle7Tage=aufgaben.filter(a=>a.deadline&&a.deadline>=t&&a.deadline<=h7)
+    const wipWarn=(name:string)=>{
+      const cnt=aufgaben.filter(a=>a.person===name&&a.status!=='Erledigt'&&!a.parent_id).length
+      return cnt>=6?'rot':cnt>=4?'gelb':null
+    }
+    const BRAND_ITEMS=[
+      {id:'website_premium',  label:'Website wirkt premium'},
+      {id:'texte_quadras',    label:'Produkttexte klingen nach QUADRAS'},
+      {id:'packaging_brand',  label:'Packaging wirkt ruhig & hochwertig'},
+      {id:'hangtags_brand',   label:'Hangtags passen zur Materialwelt'},
+      {id:'foto_sprache',     label:'Fotosprache ist definiert'},
+      {id:'social_look',      label:'Social Grid Look ist konsistent'},
+      {id:'patch_story',      label:'Patch-System wird verständlich erklärt'},
+      {id:'farben_final',     label:'Farben & Typografie sind final'},
+      {id:'founder_story',    label:'Founder Edition Story ist klar'},
+      {id:'no_cheap_vibes',   label:'Kein Dropshipping-Feeling irgendwo'},
+    ]
+    const brandDone=BRAND_ITEMS.filter(i=>brandReadiness[i.id]).length
+    const brandPct=Math.round(brandDone/BRAND_ITEMS.length*100)
+    const brandColor=brandPct<50?'var(--red)':brandPct<80?'var(--amber)':'var(--signal)'
+    const READINESS_ITEMS=[
+      {id:'produkt',    label:'Produkt freigegeben'},
+      {id:'bulk',       label:'Bulk-Order ausgelöst'},
+      {id:'packaging',  label:'Packaging bestellt'},
+      {id:'shopify',    label:'Shopify live'},
+      {id:'checkout',   label:'Checkout getestet'},
+      {id:'rechtlich',  label:'AGB & Impressum live'},
+      {id:'fotos',      label:'Produktfotos fertig'},
+      {id:'newsletter', label:'Newsletter aktiv'},
+      {id:'content',    label:'Launch-Content bereit'},
+      {id:'support',    label:'Support & Retouren bereit'},
+    ]
+    const readinessDone=READINESS_ITEMS.filter(i=>readiness[i.id]).length
+    const readinessPct=Math.round(readinessDone/READINESS_ITEMS.length*100)
+    const readinessColor=readinessPct<50?'var(--red)':readinessPct<80?'var(--amber)':'var(--signal)'
+    const toggleReadiness=async(id:string)=>{
+      const next={...readiness,[id]:!readiness[id]}
+      setReadiness(next)
+      await supabase.from('team_settings').upsert({id:'launch_readiness',value:next,updated_by:aktiv})
+    }
+    const toggleBrandReadiness=async(id:string)=>{
+      const next={...brandReadiness,[id]:!brandReadiness[id]}
+      setBrandReadiness(next)
+      await supabase.from('team_settings').upsert({id:'brand_readiness',value:next,updated_by:aktiv})
+    }
+    const addRisiko=async(titel:string,impact:string,owner:string,gegenmasnahme:string)=>{
+      await supabase.from('risiken').insert({titel,impact,wahrscheinlichkeit:'Mittel',gegenmasnahme,owner,status:'Offen'})
+    }
+    const delRisiko=(id:string)=>confirm('Risiko löschen?',async()=>{
+      setRisiken(prev=>prev.filter(r=>r.id!==id))
+      await supabase.from('risiken').delete().eq('id',id)
+    })
+    const saveMission=async()=>{
+      setWeeklyMission(missionDraft)
+      setMissionEdit(false)
+      await supabase.from('team_settings').upsert({id:'weekly_mission',value:{text:missionDraft},updated_by:aktiv})
+    }
+    const missionLines=weeklyMission.split('\n').filter(l=>l.trim()!=='')
 
     return (
       <div>
+        {/* Weekly Mission */}
+        <div className="mission-block">
+          <div className="mission-eyebrow">Weekly Mission</div>
+          {missionEdit ? (
+            <>
+              <textarea className="mission-textarea" autoFocus
+                placeholder={"Diese Woche ist erfolgreich, wenn:\n- Packaging final bestellt\n- Shopify Checkout getestet\n- 3 Designentscheidungen getroffen"}
+                value={missionDraft} onChange={e=>setMissionDraft(e.target.value)}
+                onKeyDown={e=>e.key==='Enter'&&e.metaKey&&saveMission()}/>
+              <div style={{display:'flex',gap:'var(--sp2)'}}>
+                <button className="mission-edit-btn" onClick={saveMission} style={{background:'rgba(47,111,85,0.3)',borderColor:'rgba(47,111,85,0.5)',color:'#6fcfa3'}}>Speichern</button>
+                <button className="mission-edit-btn" onClick={()=>setMissionEdit(false)}>Abbrechen</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <button className="mission-edit-btn" onClick={()=>{setMissionDraft(weeklyMission);setMissionEdit(true)}}>Bearbeiten</button>
+              {missionLines.length>0 ? (
+                <>
+                  <div className="mission-title">Diese Woche zählt:</div>
+                  <div className="mission-items">
+                    {missionLines.map((l,i)=>(
+                      <div key={i} className="mission-item">
+                        <div className="mission-item-dot"/>
+                        {l.replace(/^[-·•]\s*/,'')}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="mission-empty" onClick={()=>{setMissionDraft('');setMissionEdit(true)}}>
+                  Wochenziel setzen — was muss diese Woche passieren, damit der Launch nicht rutscht?
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
         {/* Executive Summary */}
-        <div className="card" style={{marginBottom:'var(--sp5)',borderLeft:`3px solid ${statusColor}`}}>
+        <div className="card" style={{marginBottom:'var(--sp4)',borderLeft:`3px solid ${statusColor}`}}>
           <div style={{padding:'var(--sp4)'}}>
             <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
               <div>
@@ -714,8 +833,8 @@ export default function App() {
                 <div style={{fontSize:'var(--text-lg)',fontWeight:700,color:statusColor}}>{statusText}</div>
               </div>
               <div style={{textAlign:'right'}}>
-                <div style={{fontSize:'var(--text-4xl)',fontWeight:700,color:statusColor,letterSpacing:'-1px',lineHeight:1}}>{gesamtPct}%</div>
-                <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>Launch Readiness</div>
+                <div style={{fontFamily:'var(--font-display)',fontSize:'var(--text-4xl)',fontWeight:700,color:statusColor,letterSpacing:'-1px',lineHeight:1}}>{gesamtPct}%</div>
+                <div style={{fontSize:'var(--text-xs)',color:'var(--muted)',marginTop:2}}>aus Hauptaufgaben</div>
               </div>
             </div>
             <div className="launch-bar-phases" style={{marginBottom:'var(--sp2)'}}>
@@ -725,11 +844,11 @@ export default function App() {
                 return <div key={phase} className="launch-bar-phase" title={`${phase}: ${pct}%`}><div className="launch-bar-phase-fill" style={{width:`${pct}%`}}/></div>
               })}
             </div>
-            <div style={{display:'flex',gap:'var(--sp4)',flexWrap:'wrap'}}>
-              {blockerAufgaben.length>0&&<div style={{fontSize:'var(--text-sm)',color:'var(--red)'}}>⚠ {blockerAufgaben.length} Blocker aktiv</div>}
-              {designFeedbackOffen.length>0&&<div style={{fontSize:'var(--text-sm)',color:'var(--amber)',cursor:'pointer'}} onClick={()=>setView('design')}>◈ {designFeedbackOffen.length} Design{designFeedbackOffen.length===1?' wartet':' warten'} auf Feedback</div>}
-              {ueberfaellig>0&&<div style={{fontSize:'var(--text-sm)',color:'var(--red)'}}>{ueberfaellig} Aufgabe{ueberfaellig===1?' überfällig':' überfällig'}</div>}
-              {blockerAufgaben.length===0&&designFeedbackOffen.length===0&&ueberfaellig===0&&<div style={{fontSize:'var(--text-sm)',color:'var(--signal)'}}>Keine kritischen Probleme</div>}
+            <div style={{display:'flex',gap:'var(--sp4)',flexWrap:'wrap',marginTop:'var(--sp2)'}}>
+              {blockerAufgaben.length>0&&<span style={{fontSize:'var(--text-sm)',color:'var(--red)',fontWeight:600}}>{blockerAufgaben.length} Blocker aktiv</span>}
+              {designFeedbackOffen.length>0&&<span style={{fontSize:'var(--text-sm)',color:'var(--amber)',fontWeight:600,cursor:'pointer'}} onClick={()=>setView('design')}>{designFeedbackOffen.length} Design{designFeedbackOffen.length===1?' wartet':' warten'} auf Feedback</span>}
+              {ueberfaellig>0&&<span style={{fontSize:'var(--text-sm)',color:'var(--red)',fontWeight:600}}>{ueberfaellig} überfällig</span>}
+              {blockerAufgaben.length===0&&designFeedbackOffen.length===0&&ueberfaellig===0&&<span style={{fontSize:'var(--text-sm)',color:'var(--signal)',fontWeight:600}}>Keine kritischen Probleme</span>}
             </div>
           </div>
         </div>
@@ -863,22 +982,85 @@ export default function App() {
           </>
         )}
 
-        {/* Open Decisions on Heute */}
-        {offeneEntscheidungen.length>0&&(
-          <div className="card" style={{marginBottom:'var(--sp5)'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'var(--sp3) var(--sp4) var(--sp2)',borderBottom:'1px solid var(--border)'}}>
-              <div className="cockpit-section-lbl" style={{padding:0,border:'none'}}>Letzte Entscheidungen</div>
-              <button className="btn btn-xs btn-secondary" onClick={()=>setView('entscheidungen')}>Alle</button>
-            </div>
-            {offeneEntscheidungen.map(e=>(
-              <div key={e.id} style={{padding:'var(--sp2) var(--sp4)',borderBottom:'1px solid var(--border)'}}>
-                <div style={{fontSize:'var(--text-base)',fontWeight:500,color:'var(--ink)',marginBottom:2}}>{e.titel}</div>
-                {e.naechster_schritt&&<div style={{fontSize:'var(--text-xs)',color:'var(--signal)'}}>→ {e.naechster_schritt}</div>}
-                <div style={{fontSize:'var(--text-xs)',color:'var(--muted)',marginTop:2}}>{e.projekt} · {fmtDate(e.datum)}</div>
+        {/* Launch Readiness Checkliste */}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
+          <div style={{fontSize:'var(--text-md)',fontWeight:700,color:'var(--ink)'}}>Launch Readiness</div>
+          <div style={{display:'flex',alignItems:'center',gap:'var(--sp3)'}}>
+            <div style={{fontSize:'var(--text-sm)',color:readinessColor,fontWeight:700}}>{readinessDone}/{READINESS_ITEMS.length}</div>
+            <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>{readinessPct}%</div>
+          </div>
+        </div>
+        <div className="card" style={{marginBottom:'var(--sp5)'}}>
+          <div className="readiness-score-bar" style={{margin:'var(--sp3) var(--sp4) 0'}}>
+            <div className="readiness-score-fill" style={{width:`${readinessPct}%`,background:readinessColor}}/>
+          </div>
+          <div className="readiness-grid" style={{margin:'var(--sp3) var(--sp4) var(--sp4)'}}>
+            {READINESS_ITEMS.map(item=>(
+              <div key={item.id} className={`readiness-item${readiness[item.id]?' done':''}`} onClick={()=>toggleReadiness(item.id)}>
+                <button className={`readiness-check${readiness[item.id]?' done':''}`}>
+                  {readiness[item.id]&&<svg style={{width:9,height:9}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                </button>
+                <span className="readiness-label">{item.label}</span>
               </div>
             ))}
           </div>
+        </div>
+
+        {/* Decision Queue — Decision → Task */}
+        {offeneEntscheidungen.length>0&&(
+          <div style={{marginBottom:'var(--sp5)'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
+              <div style={{fontSize:'var(--text-md)',fontWeight:700,color:'var(--ink)'}}>Entscheidungen</div>
+              <button className="btn btn-xs btn-secondary" onClick={()=>setView('entscheidungen')}>Alle ansehen</button>
+            </div>
+            <div className="card">
+              {offeneEntscheidungen.map((e,idx)=>(
+                <div key={e.id} className="decision-queue-item">
+                  <div className="dq-index">{String(idx+1).padStart(2,'0')}</div>
+                  <div className="dq-body">
+                    <div className="dq-titel">{e.titel}</div>
+                    <div className="dq-meta">{e.projekt} · {fmtDate(e.datum)}{e.naechster_schritt&&<span style={{color:'var(--signal)'}}> · → {e.naechster_schritt}</span>}</div>
+                  </div>
+                  <div className="dq-actions">
+                    <button className="btn btn-xs btn-signal"
+                      title="Folgeaufgabe aus dieser Entscheidung erstellen"
+                      onClick={()=>{
+                        setEditA({titel:`Folgeaufgabe: ${e.titel}`,beschreibung:`Aus Entscheidung vom ${fmtDate(e.datum)}: ${e.naechster_schritt||e.begruendung}`,person:aktiv,projekt:e.projekt,prioritaet:'Hoch',status:'Offen',deadline:'',ergebnis:'',blocker:'',nummer:null,phase:'',sortierung:0,ist_hauptaufgabe:false,parent_id:null,completed_at:null,id:'',created_at:'',updated_at:'',freigabe:''} as unknown as Aufgabe)
+                        setModal('aufgabe')
+                      }}>+ Aufgabe</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
+
+        {/* Brand Readiness */}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
+          <div style={{fontSize:'var(--text-md)',fontWeight:700,color:'var(--ink)'}}>Brand Readiness</div>
+          <div style={{display:'flex',alignItems:'center',gap:'var(--sp3)'}}>
+            <div style={{fontSize:'var(--text-sm)',color:brandColor,fontWeight:700}}>{brandDone}/{BRAND_ITEMS.length}</div>
+            <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>{brandPct}%</div>
+          </div>
+        </div>
+        <div className="card" style={{marginBottom:'var(--sp5)'}}>
+          <div className="readiness-score-bar" style={{margin:'var(--sp3) var(--sp4) 0'}}>
+            <div className="readiness-score-fill" style={{width:`${brandPct}%`,background:brandColor}}/>
+          </div>
+          <div className="readiness-grid" style={{margin:'var(--sp3) var(--sp4) var(--sp4)'}}>
+            {BRAND_ITEMS.map(item=>(
+              <div key={item.id} className={`readiness-item${brandReadiness[item.id]?' done':''}`} onClick={()=>toggleBrandReadiness(item.id)}>
+                <button className={`readiness-check${brandReadiness[item.id]?' done':''}`}>
+                  {brandReadiness[item.id]&&<svg style={{width:9,height:9}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                </button>
+                <span className="readiness-label">{item.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Risk Log */}
+        <RiskLog risiken={risiken} aktiv={aktiv} onAdd={addRisiko} onDel={delRisiko}/>
 
         {/* Team */}
         <div style={{fontSize:'var(--text-md)',fontWeight:700,marginBottom:'var(--sp3)',color:'var(--ink)'}}>Team</div>
@@ -892,7 +1074,14 @@ export default function App() {
               <div className="team-card" key={p.name}>
                 <div className="team-card-head">
                   <div><div className="team-card-name" style={{color:PERSON_HEX[p.name]}}>{p.name}</div><div className="team-card-role">{p.role}</div></div>
-                  <div className="team-card-stats"><div style={{fontWeight:700}}>{pPct}%</div><div>{pA.length} offen</div></div>
+                  <div className="team-card-stats">
+                    <div style={{fontWeight:700}}>{pPct}%</div>
+                    <div style={{display:'flex',alignItems:'center',gap:'var(--sp1)'}}>
+                      <span>{pA.length} offen</span>
+                      {wipWarn(p.name)==='rot'&&<span className="wip-warning">Überladen</span>}
+                      {wipWarn(p.name)==='gelb'&&<span className="wip-warning" style={{background:'var(--amber-bg)',color:'var(--amber)'}}>Voll</span>}
+                    </div>
+                  </div>
                 </div>
                 <div className="metric-bar" style={{margin:'0 var(--sp4) var(--sp1)',borderRadius:1}}>
                   <div className="metric-bar-fill" style={{width:`${pPct}%`,background:PERSON_HEX[p.name]}}/>
@@ -916,6 +1105,52 @@ export default function App() {
                   <span style={{fontWeight:600,color:PERSON_HEX[a.person]||'var(--slate)'}}>{a.person}</span>{' '}hat <em>{a.entity_titel}</em> {a.action}
                 </div>
                 <div className="activity-time">{new Date(a.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Risk Log Component ──────────────────────────────────────────────────────
+  function RiskLog({risiken,aktiv,onAdd,onDel}:{risiken:Risiko[];aktiv:string;onAdd:(t:string,i:string,o:string,g:string)=>void;onDel:(id:string)=>void}) {
+    const [show,setShow]=useState(false)
+    const [f,setF]=useState({titel:'',impact:'Hoch',owner:aktiv,gegenmasnahme:''})
+    const impactColor=(i:string)=>i==='Hoch'?'var(--red)':i==='Mittel'?'var(--amber)':'var(--signal)'
+    const statusColor=(s:string)=>s==='Eingetreten'?'var(--red)':s==='Offen'?'var(--amber)':'var(--muted)'
+    return (
+      <div style={{marginBottom:'var(--sp5)'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
+          <div style={{fontSize:'var(--text-md)',fontWeight:700,color:'var(--ink)'}}>Risiken</div>
+          <button className="btn btn-xs btn-secondary" onClick={()=>setShow(s=>!s)}>{show?'Abbrechen':'+ Risiko'}</button>
+        </div>
+        {show&&(
+          <div className="card" style={{marginBottom:'var(--sp3)',padding:'var(--sp4)'}}>
+            <div className="form-group"><label className="form-label">Risiko *</label><input className="form-input" style={{fontSize:'var(--text-sm)'}} placeholder="z.B. Packaging Lieferzeit zu lang" value={f.titel} onChange={e=>setF(p=>({...p,titel:e.target.value}))}/></div>
+            <div className="form-row">
+              <div className="form-group"><label className="form-label">Impact</label><select className="form-input" style={{fontSize:'var(--text-sm)'}} value={f.impact} onChange={e=>setF(p=>({...p,impact:e.target.value}))}><option>Hoch</option><option>Mittel</option><option>Niedrig</option></select></div>
+              <div className="form-group"><label className="form-label">Owner</label><select className="form-input" style={{fontSize:'var(--text-sm)'}} value={f.owner} onChange={e=>setF(p=>({...p,owner:e.target.value}))}>{PERSONEN.map(p=><option key={p.name}>{p.name}</option>)}</select></div>
+            </div>
+            <div className="form-group"><label className="form-label">Gegenmaßnahme</label><input className="form-input" style={{fontSize:'var(--text-sm)'}} placeholder="Was tun wenn es eintritt?" value={f.gegenmasnahme} onChange={e=>setF(p=>({...p,gegenmasnahme:e.target.value}))}/></div>
+            <div style={{display:'flex',gap:'var(--sp2)'}}>
+              <button className="btn btn-primary btn-sm" onClick={()=>{if(!f.titel.trim())return;onAdd(f.titel,f.impact,f.owner,f.gegenmasnahme);setF({titel:'',impact:'Hoch',owner:aktiv,gegenmasnahme:''});setShow(false)}}>Speichern</button>
+              <button className="btn btn-secondary btn-sm" onClick={()=>setShow(false)}>Abbrechen</button>
+            </div>
+          </div>
+        )}
+        {risiken.length===0&&!show&&<div className="card"><div className="empty"><div className="empty-title">Keine Risiken erfasst</div><div className="empty-sub">Füge bekannte Risiken hinzu bevor sie eintreten</div></div></div>}
+        {risiken.length>0&&(
+          <div className="card">
+            {risiken.map(r=>(
+              <div key={r.id} style={{display:'flex',alignItems:'flex-start',gap:'var(--sp3)',padding:'var(--sp3) var(--sp4)',borderBottom:'1px solid var(--border)'}}>
+                <div style={{width:8,height:8,borderRadius:'50%',background:impactColor(r.impact),flexShrink:0,marginTop:5}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:'var(--text-base)',fontWeight:500,color:'var(--ink)',marginBottom:2}}>{r.titel}</div>
+                  {r.gegenmasnahme&&<div style={{fontSize:'var(--text-xs)',color:'var(--mid)',marginBottom:2}}>→ {r.gegenmasnahme}</div>}
+                  <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>{r.owner} · Impact: <span style={{color:impactColor(r.impact),fontWeight:600}}>{r.impact}</span> · <span style={{color:statusColor(r.status)}}>{r.status}</span></div>
+                </div>
+                <button className="icon-btn del" onClick={()=>onDel(r.id)} style={{flexShrink:0}}>{Ico.trash}</button>
               </div>
             ))}
           </div>
