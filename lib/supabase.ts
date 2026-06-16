@@ -1,19 +1,69 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+export const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+export const PERSONEN = [
+  { name: 'Alexander' as const, role: 'Founder · Product',  color: 'var(--person-alexander)' },
+  { name: 'Norman'    as const, role: 'Operations',          color: 'var(--person-norman)' },
+  { name: 'Anna'      as const, role: 'Design · Content',   color: 'var(--person-anna)' },
+]
+export type PersonName = 'Alexander' | 'Norman' | 'Anna'
 
-export const OWNERS = ['AT', 'OP', 'DC'] as const
-export type Owner = typeof OWNERS[number]
+export const PERSON_HEX: Record<string,string> = {
+  Alexander: '#1A2028', Norman: '#4C5A66', Anna: '#B23A32'
+}
 
-export const STATUS_AUFGABEN = ['Inbox','Heute','Diese Woche','In Arbeit','Wartet extern','Blockiert','Erledigt','Gestrichen'] as const
-export const PRIO = ['P0','P1','P2','P3'] as const
-export const STATUS_PRODUKT = ['Idee','Konzept','Design','Tech Pack','Supplier gesucht','Sample angefragt','Sample unterwegs','Sample Review','Freigegeben','In Produktion','Launchbereit','Live'] as const
-export const STATUS_LIEFERANT = ['Neu','Angeschrieben','Antwort','Call geplant','Sample läuft','Angebot','Aktiv','Backup','Abgelehnt'] as const
-export const BEWERTUNG = ['A','B','C','D'] as const
-export const STATUS_SAMPLE = ['Angefragt','Bezahlt','In Produktion','Versendet','Angekommen','In Review','Änderungen','Freigegeben','Abgelehnt'] as const
-export const STATUS_CONTENT = ['Idee','Skript','In Produktion','Review','Geplant','Live','Ausgewertet'] as const
-export const KAT_AUFGABEN = ['Produktentwicklung','Supplier','Sample','Design','Website','Content','Finanzen','Entscheidung','Launch','Rechtliches','Organisation'] as const
-export const KAT_FINANZEN = ['Sample','Produktion','Versand','Zoll','Packaging','Website','Tools','Design','Marketing','Rechtliches','Sonstiges'] as const
+export const PROJEKTE = [
+  'Cap','Patch / Frame','Packaging','Website / Shop',
+  'Content / Social Media','Newsletter','Lieferanten',
+  'Finanzen','Rechtliches','Brand','Organisation',
+] as const
+
+export const PRIOS          = ['Hoch','Normal','Niedrig'] as const
+export const STATUSES       = ['Offen','In Arbeit','Erledigt'] as const
+export const DESIGN_KATS    = ['Patch Idee','Frame Design','Hangtag','Verpackung','Logo Variante','Sonstiges'] as const
+export const DESIGN_STATUS  = ['Idee','In Arbeit','Feedback ausstehend','Freigegeben','Abgelehnt'] as const
+export const FREIGABE_STATUS= ['Offen','Freigegeben','Überarbeiten','Abgelehnt'] as const
+export const PRIO_HEX: Record<string,string> = { Hoch:'#B23A32', Normal:'#2A5298', Niedrig:'#7A8896' }
+
+export type Aufgabe = {
+  id: string; nummer: number|null; titel: string; beschreibung: string
+  person: string; projekt: string; prioritaet: string; status: string
+  deadline: string|null; ergebnis: string; phase: string; sortierung: number
+  ist_hauptaufgabe: boolean; parent_id: string|null; blocker: string
+  completed_at: string|null; created_at: string; updated_at: string
+}
+export type Entscheidung = {
+  id: string; titel: string; begruendung: string; person: string
+  projekt: string; datum: string; naechster_schritt: string; created_at: string
+}
+export type Datei = {
+  id: string; name: string; dateiname: string; projekt: string
+  hochgeladen_von: string; url: string; groesse: number; created_at: string
+}
+export type DesignIdee = {
+  id: string; titel: string; kategorie: string; beschreibung: string
+  status: string; von: string; dateiname: string; url: string
+  freigabe: string; feedback_json: FeedbackEntry[]; created_at: string
+}
+export type FeedbackEntry = { person: string; text: string; datum: string }
+export type Comment = {
+  id: string; aufgabe_id: string; person: string; kommentar: string; created_at: string
+}
+
+// Helpers
+export const todayStr  = () => new Date().toISOString().split('T')[0]
+export const in48hStr  = () => { const d=new Date(); d.setHours(d.getHours()+48); return d.toISOString().split('T')[0] }
+export const in7dStr   = () => { const d=new Date(); d.setDate(d.getDate()+7);    return d.toISOString().split('T')[0] }
+export const isOverdue = (d:string|null, s:string) => !!d && d < todayStr() && s!=='Erledigt'
+export const isSoon    = (d:string|null, s:string) => !!d && d >= todayStr() && d <= in48hStr() && s!=='Erledigt'
+export const safeDate  = (s:string) => s.trim()==='' ? null : s
+export const fmtDate   = (d:string|null) => d ? new Date(d+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '–'
+export const fmtShort  = (d:string|null) => d ? new Date(d+'T12:00:00').toLocaleDateString('de-DE',{weekday:'short',day:'numeric'}) : ''
+
+export async function logActivity(entity_type: string, entity_id: string, entity_titel: string, action: string, person: string) {
+  await supabase.from('activity_log').insert({ entity_type, entity_id, entity_titel, action, person }).then(()=>{})
+}
