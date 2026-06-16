@@ -730,22 +730,11 @@ export default function App() {
       const cnt=aufgaben.filter(a=>a.person===name&&a.status!=='Erledigt'&&!a.parent_id).length
       return cnt>=6?'rot':cnt>=4?'gelb':null
     }
-    const BRAND_ITEMS=[
-      {id:'website_premium',  label:'Website wirkt premium'},
-      {id:'texte_quadras',    label:'Produkttexte klingen nach QUADRAS'},
-      {id:'packaging_brand',  label:'Packaging wirkt ruhig & hochwertig'},
-      {id:'hangtags_brand',   label:'Hangtags passen zur Materialwelt'},
-      {id:'foto_sprache',     label:'Fotosprache ist definiert'},
-      {id:'social_look',      label:'Social Grid Look ist konsistent'},
-      {id:'patch_story',      label:'Patch-System wird verständlich erklärt'},
-      {id:'farben_final',     label:'Farben & Typografie sind final'},
-      {id:'founder_story',    label:'Founder Edition Story ist klar'},
-      {id:'no_cheap_vibes',   label:'Kein Dropshipping-Feeling irgendwo'},
-    ]
+    const BRAND_ITEMS=DEFAULT_BRAND.map(i=>({...i,label:brandReadiness['label_'+i.id]||i.label}))
     const brandDone=BRAND_ITEMS.filter(i=>brandReadiness[i.id]).length
     const brandPct=Math.round(brandDone/BRAND_ITEMS.length*100)
     const brandColor=brandPct<50?'var(--red)':brandPct<80?'var(--amber)':'var(--signal)'
-    const READINESS_ITEMS=[
+    const DEFAULT_READINESS=[
       {id:'produkt',    label:'Produkt freigegeben'},
       {id:'bulk',       label:'Bulk-Order ausgelöst'},
       {id:'packaging',  label:'Packaging bestellt'},
@@ -757,6 +746,20 @@ export default function App() {
       {id:'content',    label:'Launch-Content bereit'},
       {id:'support',    label:'Support & Retouren bereit'},
     ]
+    const DEFAULT_BRAND=[
+      {id:'website_premium',  label:'Website wirkt premium'},
+      {id:'texte_quadras',    label:'Produkttexte klingen nach QUADRAS'},
+      {id:'packaging_brand',  label:'Packaging wirkt ruhig & hochwertig'},
+      {id:'hangtags_brand',   label:'Hangtags passen zur Materialwelt'},
+      {id:'foto_sprache',     label:'Fotosprache ist definiert'},
+      {id:'social_look',      label:'Social Grid Look ist konsistent'},
+      {id:'patch_story',      label:'Patch-System wird verständlich erklärt'},
+      {id:'farben_final',     label:'Farben & Typografie sind final'},
+      {id:'founder_story',    label:'Founder Edition Story ist klar'},
+      {id:'no_cheap_vibes',   label:'Kein Dropshipping-Feeling irgendwo'},
+    ]
+    // Load custom labels from readiness/brandReadiness objects (stored as label_XXX keys)
+    const READINESS_ITEMS=DEFAULT_READINESS.map(i=>({...i,label:readiness['label_'+i.id]||i.label}))
     const readinessDone=READINESS_ITEMS.filter(i=>readiness[i.id]).length
     const readinessPct=Math.round(readinessDone/READINESS_ITEMS.length*100)
     const readinessColor=readinessPct<50?'var(--red)':readinessPct<80?'var(--amber)':'var(--signal)'
@@ -764,6 +767,16 @@ export default function App() {
       const next={...readiness,[id]:!readiness[id]}
       setReadiness(next)
       await supabase.from('team_settings').upsert({id:'launch_readiness',value:next,updated_by:aktiv})
+    }
+    const updateReadinessLabel=async(id:string,label:string)=>{
+      const next={...readiness,['label_'+id]:label}
+      setReadiness(next)
+      await supabase.from('team_settings').upsert({id:'launch_readiness',value:next,updated_by:aktiv})
+    }
+    const updateBrandLabel=async(id:string,label:string)=>{
+      const next={...brandReadiness,['label_'+id]:label}
+      setBrandReadiness(next)
+      await supabase.from('team_settings').upsert({id:'brand_readiness',value:next,updated_by:aktiv})
     }
     const toggleBrandReadiness=async(id:string)=>{
       const next={...brandReadiness,[id]:!brandReadiness[id]}
@@ -996,12 +1009,9 @@ export default function App() {
           </div>
           <div className="readiness-grid" style={{margin:'var(--sp3) var(--sp4) var(--sp4)'}}>
             {READINESS_ITEMS.map(item=>(
-              <div key={item.id} className={`readiness-item${readiness[item.id]?' done':''}`} onClick={()=>toggleReadiness(item.id)}>
-                <button className={`readiness-check${readiness[item.id]?' done':''}`}>
-                  {readiness[item.id]&&<svg style={{width:9,height:9}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
-                </button>
-                <span className="readiness-label">{item.label}</span>
-              </div>
+              <ReadinessItem key={item.id} item={item} checked={!!readiness[item.id]}
+                onToggle={()=>toggleReadiness(item.id)}
+                onLabelSave={(label)=>updateReadinessLabel(item.id,label)}/>
             ))}
           </div>
         </div>
@@ -1049,12 +1059,9 @@ export default function App() {
           </div>
           <div className="readiness-grid" style={{margin:'var(--sp3) var(--sp4) var(--sp4)'}}>
             {BRAND_ITEMS.map(item=>(
-              <div key={item.id} className={`readiness-item${brandReadiness[item.id]?' done':''}`} onClick={()=>toggleBrandReadiness(item.id)}>
-                <button className={`readiness-check${brandReadiness[item.id]?' done':''}`}>
-                  {brandReadiness[item.id]&&<svg style={{width:9,height:9}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
-                </button>
-                <span className="readiness-label">{item.label}</span>
-              </div>
+              <ReadinessItem key={item.id} item={item} checked={!!brandReadiness[item.id]}
+                onToggle={()=>toggleBrandReadiness(item.id)}
+                onLabelSave={(label)=>updateBrandLabel(item.id,label)}/>
             ))}
           </div>
         </div>
@@ -1107,6 +1114,35 @@ export default function App() {
                 <div className="activity-time">{new Date(a.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── ReadinessItem — editable label ─────────────────────────────────────────
+  function ReadinessItem({item,checked,onToggle,onLabelSave}:{item:{id:string;label:string};checked:boolean;onToggle:()=>void;onLabelSave:(l:string)=>void}) {
+    const [editing,setEditing]=useState(false)
+    const [draft,setDraft]=useState(item.label)
+    const save=()=>{ onLabelSave(draft); setEditing(false) }
+    return (
+      <div className={`readiness-item${checked?' done':''}`}>
+        <button className={`readiness-check${checked?' done':''}`} onClick={onToggle}>
+          {checked&&<svg style={{width:9,height:9}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+        </button>
+        {editing ? (
+          <div style={{flex:1,display:'flex',gap:'var(--sp1)',alignItems:'center'}} onClick={e=>e.stopPropagation()}>
+            <input autoFocus className="form-input" style={{fontSize:'var(--text-sm)',padding:'2px var(--sp2)',flex:1}}
+              value={draft} onChange={e=>setDraft(e.target.value)}
+              onKeyDown={e=>{if(e.key==='Enter')save();if(e.key==='Escape')setEditing(false)}}/>
+            <button className="btn btn-xs btn-signal" onClick={save}>✓</button>
+            <button className="btn btn-xs btn-secondary" onClick={()=>setEditing(false)}>✕</button>
+          </div>
+        ) : (
+          <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'space-between',gap:'var(--sp1)'}}>
+            <span className="readiness-label" onClick={onToggle}>{item.label}</span>
+            <button className="icon-btn" style={{width:20,height:20,flexShrink:0}}
+              onClick={e=>{e.stopPropagation();setDraft(item.label);setEditing(true)}}>{Ico.edit}</button>
           </div>
         )}
       </div>
