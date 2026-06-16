@@ -117,6 +117,9 @@ export default function App() {
   const [authed,      setAuthed]      = useState(false)
   const [authChecked, setAuthChecked] = useState(false)
   const [view,        setView]        = useState<View>('heute')
+  const [cmdOpen,     setCmdOpen]     = useState(false)
+  const [cmdQuery,    setCmdQuery]    = useState('')
+  const [focusTask,   setFocusTask]   = useState<Aufgabe|null>(null)
   const [aktiv,       setAktiv]       = useState<PersonName>('Alexander')
   const [aufgaben,    setAufgaben]    = useState<Aufgabe[]>([])
   const [entscheid,   setEntscheid]   = useState<Entscheidung[]>([])
@@ -259,8 +262,9 @@ export default function App() {
     const h=(e:KeyboardEvent)=>{
       const tag=(e.target as HTMLElement).tagName
       if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return
-      if(e.key==='Escape'){ setModal(null); setFlyout(null); setDesignFlyout(null); setSidebarOpen(false) }
+      if(e.key==='Escape'){ setModal(null); setFlyout(null); setDesignFlyout(null); setSidebarOpen(false); setCmdOpen(false); setFocusTask(null) }
       if(modal||flyout||designFlyout) return
+      if((e.metaKey||e.ctrlKey)&&e.key==='k'){ e.preventDefault(); setCmdOpen(o=>!o); return }
       if(e.key==='n'||e.key==='N'){ setEditA(null); setModal('aufgabe') }
       if(e.key==='h'||e.key==='H') setView('heute')
       if(e.key==='p'||e.key==='P') setView('plan')
@@ -592,7 +596,15 @@ export default function App() {
               :<div className="design-flyout-img-placeholder">{idee.kategorie}</div>}
           </div>
           <div className="design-flyout-body">
-            {idee.beschreibung&&(
+            {/* PLM Block */}
+            <div className="plm-block" style={{marginBottom:'var(--sp4)'}}>
+              <div className="plm-logo">QUADRAS · QOS-{String(ideen.indexOf(idee)+1).padStart(3,'0')}</div>
+              <div className="plm-name">{idee.titel}</div>
+              <div className="plm-edition">{idee.kategorie} / Edition 01</div>
+              <div className="plm-mj-prompt">
+                MJ Prompt: {idee.titel} patch design, 65x43mm format, border-radius 4, flat embroidery, --ar 65:43 --v 7.0 --style raw
+              </div>
+            </div>
               <div className="flyout-section"><div className="flyout-section-label">Konzept</div>
                 <div style={{fontSize:'var(--text-base)',color:'var(--slate)',lineHeight:1.6}}>{idee.beschreibung}</div>
               </div>
@@ -944,6 +956,13 @@ export default function App() {
           </div>
         </div>
 
+        {/* Command Bar — opens Cmd+K */}
+        <div className="command-bar" onClick={()=>setCmdOpen(true)} role="button" tabIndex={0}>
+          <svg className="command-icon" style={{width:16,height:16}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span className="command-placeholder">Suchen, navigieren, anlegen…</span>
+          <span className="command-hint">⌘K</span>
+        </div>
+
         {/* Hero */}
         <div className="cockpit-hero">
           <div className="cockpit-role"><div className="cockpit-dot" style={{background:PERSON_HEX[aktiv]}}/>{ap.role}</div>
@@ -961,7 +980,7 @@ export default function App() {
 
         {/* 7-day timeline — includes done tasks (C fix) */}
         <div className="card" style={{marginBottom:'var(--sp4)'}}>
-          <div className="cockpit-section-lbl">Diese Woche</div>
+          <div className="section-label">Diese Woche</div>
           <div className="week-timeline">
             {weekDays.map(day=>{
               const dayTasks=alle7Tage.filter(a=>a.deadline===day)
@@ -995,7 +1014,7 @@ export default function App() {
         {/* Critical + Focus */}
         <div className="cockpit-grid">
           <div className="card">
-            {kritisch.length>0?<div className="cockpit-critical-lbl">Kritisch — sofort handeln ({kritisch.length})</div>:<div className="cockpit-section-lbl">Kein kritischer Pfad</div>}
+            {kritisch.length>0?<div className="section-label-red">Kritisch — sofort handeln ({kritisch.length})</div>:<div className="cockpit-section-lbl">Kein kritischer Pfad</div>}
             {loading?<SkeletonList rows={2}/>:kritisch.length===0
               ?<div className="empty"><div className="empty-title c-signal">Alles im grünen Bereich</div></div>
               :kritisch.slice(0,5).map(a=><AItem key={a.id} a={a} editable/>)}
@@ -1194,6 +1213,121 @@ export default function App() {
             ))}
           </div>
         )}
+      </div>
+    )
+  }
+
+  // ── Command Center (Cmd+K) ──────────────────────────────────────────────────
+  function CommandCenter() {
+    const [q,setQ]=useState(cmdQuery)
+    const ref=useRef<HTMLInputElement>(null)
+    useEffect(()=>{ ref.current?.focus() },[])
+
+    const results:{type:string;item:Aufgabe|Entscheidung|DesignIdee|Datei;title:string;sub:string}[]=[]
+    if(q.trim().length>0) {
+      const ql=q.toLowerCase()
+      aufgaben.filter(a=>a.titel.toLowerCase().includes(ql)||a.beschreibung?.toLowerCase().includes(ql)).slice(0,4).forEach(a=>
+        results.push({type:'aufgabe',item:a,title:a.titel,sub:`${a.person} · ${a.projekt} · ${a.status}`}))
+      entscheid.filter(e=>e.titel.toLowerCase().includes(ql)).slice(0,3).forEach(e=>
+        results.push({type:'entscheidung',item:e,title:e.titel,sub:`${e.projekt} · ${fmtDate(e.datum)}`}))
+      ideen.filter(i=>i.titel.toLowerCase().includes(ql)).slice(0,3).forEach(i=>
+        results.push({type:'design',item:i,title:i.titel,sub:`${i.kategorie} · ${i.freigabe}`}))
+      dateien.filter(d=>d.name.toLowerCase().includes(ql)).slice(0,2).forEach(d=>
+        results.push({type:'datei',item:d,title:d.name,sub:d.projekt}))
+    }
+
+    const go=(r:typeof results[0])=>{
+      if(r.type==='aufgabe'){setFlyout(r.item as Aufgabe)}
+      if(r.type==='entscheidung'){setView('entscheidungen')}
+      if(r.type==='design'){setDesignFlyout(r.item as DesignIdee);setView('design')}
+      if(r.type==='datei'){setView('dateien')}
+      setCmdOpen(false); setCmdQuery('')
+    }
+
+    const typeIcon=(t:string)=>{
+      if(t==='aufgabe') return Ico.aufg
+      if(t==='entscheidung') return Ico.decide
+      if(t==='design') return Ico.design
+      return Ico.files
+    }
+
+    return (
+      <div className="cmd-overlay" onClick={e=>e.target===e.currentTarget&&setCmdOpen(false)}>
+        <div className="cmd-modal">
+          <div className="cmd-input-wrap">
+            <svg style={{width:18,height:18,color:'var(--muted)',flexShrink:0}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input ref={ref} className="cmd-input" placeholder="Suchen…" value={q}
+              onChange={e=>setQ(e.target.value)}
+              onKeyDown={e=>{if(e.key==='Escape'){setCmdOpen(false);setCmdQuery('')}}}/>
+            <span className="cmd-esc">esc</span>
+          </div>
+          <div className="cmd-results">
+            {q.trim()===''&&(
+              <div>
+                <div className="cmd-section-hdr">Schnellzugriff</div>
+                {[{label:'Neue Aufgabe',action:()=>{setEditA(null);setModal('aufgabe');setCmdOpen(false)},icon:Ico.aufg},
+                  {label:'Launch Plan',action:()=>{setView('plan');setCmdOpen(false)},icon:Ico.plan},
+                  {label:'Design Studio',action:()=>{setView('design');setCmdOpen(false)},icon:Ico.design},
+                  {label:'Neue Entscheidung',action:()=>{setModal('entscheidung');setCmdOpen(false)},icon:Ico.decide},
+                ].map((item,i)=>(
+                  <div key={i} className="cmd-item" onClick={item.action}>
+                    <div className="cmd-item-icon">{item.icon}</div>
+                    <div className="cmd-item-body"><div className="cmd-item-title">{item.label}</div></div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {q.trim()!==''&&results.length===0&&<div className="cmd-empty">Keine Ergebnisse für „{q}"</div>}
+            {results.length>0&&(
+              <div>
+                <div className="cmd-section-hdr">{results.length} Ergebnisse</div>
+                {results.map((r,i)=>(
+                  <div key={i} className="cmd-item" onClick={()=>go(r)}>
+                    <div className="cmd-item-icon">{typeIcon(r.type)}</div>
+                    <div className="cmd-item-body">
+                      <div className="cmd-item-title">{r.title}</div>
+                      <div className="cmd-item-sub">{r.sub}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Focus Mode ───────────────────────────────────────────────────────────────
+  function FocusMode({task}:{task:Aufgabe}) {
+    return (
+      <div className="focus-overlay" onClick={e=>e.target===e.currentTarget&&setFocusTask(null)}>
+        <div style={{position:'relative'}}>
+          <button className="focus-close" onClick={()=>setFocusTask(null)}>Beenden · Esc</button>
+          <div className="focus-card">
+            <div className="focus-eyebrow">
+              <div style={{width:5,height:5,borderRadius:'50%',background:'var(--signal)'}}/>
+              Deep Work · {task.person} · {task.projekt}
+            </div>
+            <div className="focus-title">{task.titel}</div>
+            {task.ergebnis&&(
+              <>
+                <div className="focus-result-lbl">Gewünschtes Ergebnis</div>
+                <div className="focus-result">{task.ergebnis}</div>
+              </>
+            )}
+            {task.blocker&&(
+              <div style={{padding:'var(--sp3) var(--sp4)',background:'rgba(143,62,54,0.15)',borderRadius:'var(--r-xl)',borderLeft:'2px solid var(--red)',marginBottom:'var(--sp4)'}}>
+                <div style={{fontFamily:'var(--font-mono)',fontSize:'10px',fontWeight:700,color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:4}}>Blocker</div>
+                <div style={{fontSize:'var(--text-base)',color:'rgba(255,255,255,0.65)'}}>{task.blocker}</div>
+              </div>
+            )}
+            <div style={{display:'flex',gap:'var(--sp2)'}}>
+              <button className="btn btn-signal btn-sm" onClick={()=>{toggleStatus(task);setFocusTask(null)}}>Als erledigt markieren</button>
+              <button className="btn btn-sm" style={{background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.6)',border:'1px solid rgba(255,255,255,0.10)'}} onClick={()=>{setFlyout(task);setFocusTask(null)}}>Details öffnen</button>
+            </div>
+          </div>
+        </div>
       </div>
     )
   }
@@ -1588,6 +1722,8 @@ export default function App() {
       {modal==='datei'&&<DateiModal/>}
       {modal==='design'&&<DesignModal/>}
       {modal==='confirm'&&<ConfirmModal/>}
+      {cmdOpen&&<CommandCenter/>}
+      {focusTask&&<FocusMode task={focusTask}/>}
 
       <div className="toast-container">
         {toasts.map(t=><div key={t.id} className={`toast${t.type==='success'?' success':t.type==='error'?' error':''}`}>{t.msg}</div>)}
