@@ -417,8 +417,8 @@ export default function App() {
           </div>
         )}
       </div>
-    )
-  }
+  )
+}
 
   function SkeletonList({rows=4}:{rows?:number}) {
     return <>{Array.from({length:rows}).map((_,i)=>(
@@ -1523,11 +1523,10 @@ export default function App() {
   ]
   const ap=PERSONEN.find(p=>p.name===aktiv)!
 
-  return (
-    if(!authChecked) return <div style={{minHeight:'100vh',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}><div style={{fontSize:'var(--text-sm)',color:'var(--muted)'}}>Laden…</div></div>
-    if(!authed) return <LoginScreen onLogin={(name)=>{setAktiv(name);setAuthed(true)}}/>
+  if(!authChecked) return <div style={{minHeight:'100vh',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}><div style={{fontSize:'var(--text-sm)',color:'var(--muted)'}}>Laden…</div></div>
+  if(!authed) return <LoginScreen onLogin={(name)=>{setAktiv(name);setAuthed(true)}}/>
 
-    return (
+  return (
     <div className="app">
       <aside className={`sidebar${sidebarOpen?' open':''}`}>
         <div className="sidebar-logo"><div className="sidebar-logo-name">Quadras</div><div className="sidebar-logo-sub">Founder Operating System</div></div>
