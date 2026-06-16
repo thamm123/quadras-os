@@ -1014,13 +1014,13 @@ export default function App() {
         {/* Critical + Focus */}
         <div className="cockpit-grid">
           <div className="card">
-            {kritisch.length>0?<div className="section-label-red">Kritisch — sofort handeln ({kritisch.length})</div>:<div className="cockpit-section-lbl">Kein kritischer Pfad</div>}
+            {kritisch.length>0?<div className="section-label-red">Kritisch — sofort handeln ({kritisch.length})</div>:<div className="section-label">Kein kritischer Pfad</div>}
             {loading?<SkeletonList rows={2}/>:kritisch.length===0
               ?<div className="empty"><div className="empty-title c-signal">Alles im grünen Bereich</div></div>
               :kritisch.slice(0,5).map(a=><AItem key={a.id} a={a} editable/>)}
           </div>
           <div className="card">
-            <div className="cockpit-section-lbl">Mein Fokus — Top 3</div>
+            <div className="section-label">Mein Fokus — Top 3</div>
             {loading?<SkeletonList rows={3}/>:meineFokus.length===0
               ?<div className="empty"><div className="empty-title c-signal">Keine offenen Aufgaben</div></div>
               :meineFokus.map(a=><AItem key={a.id} a={a} editable/>)}
@@ -1201,7 +1201,7 @@ export default function App() {
         {/* Activity Log */}
         {activity.length>0&&(
           <div className="card">
-            <div className="cockpit-section-lbl">Letzte Aktivität</div>
+            <div className="section-label">Letzte Aktivität</div>
             {activity.slice(0,8).map(a=>(
               <div key={a.id} className="activity-item">
                 <div className="activity-dot" style={{background:PERSON_HEX[a.person]||'var(--muted)'}}/>
