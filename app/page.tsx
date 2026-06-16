@@ -821,14 +821,81 @@ export default function App() {
   function PlanView() {
     const gesamtDone=hauptaufgaben.filter(a=>a.status==='Erledigt').length
     const gesamtPct=hauptaufgaben.length>0?Math.round(gesamtDone/hauptaufgaben.length*100):0
+    const [showAddPhase, setShowAddPhase] = useState(false)
+    const [newPhase, setNewPhase] = useState(phasen[0]||'Phase 1 · Fundament')
+    const [newTitel, setNewTitel] = useState('')
+    const [newPerson, setNewPerson] = useState<PersonName>('Alexander')
+    const [newDeadline, setNewDeadline] = useState('')
+    const [newErgebnis, setNewErgebnis] = useState('')
+    const [addingH, setAddingH] = useState(false)
+
+    const addHauptaufgabe = async () => {
+      if(!newTitel.trim()) return
+      if(!newDeadline) return
+      if(!newErgebnis.trim()) return
+      setAddingH(true)
+      const nextNr = Math.max(0,...hauptaufgaben.map(a=>a.nummer||0)) + 1
+      const nextSort = Math.max(0,...hauptaufgaben.filter(a=>a.phase===newPhase).map(a=>a.sortierung||0)) + 1
+      await supabase.from('aufgaben').insert({
+        nummer: nextNr, titel: newTitel.trim(), person: newPerson,
+        projekt: 'Organisation', prioritaet: 'Hoch', status: 'Offen',
+        deadline: newDeadline, ergebnis: newErgebnis.trim(),
+        phase: newPhase, sortierung: nextSort,
+        ist_hauptaufgabe: true, beschreibung: '', blocker: '',
+        parent_id: null, completed_at: null
+      })
+      setNewTitel(''); setNewDeadline(''); setNewErgebnis('')
+      setAddingH(false); setShowAddPhase(false)
+      toast('Hauptaufgabe hinzugefügt', 'success')
+    }
+
     return (
       <div>
         <div className="page-head">
-          <div><div className="page-title">Launch Plan</div><div className="page-sub">20 Hauptaufgaben · {gesamtDone}/{hauptaufgaben.length} · Klick auf Aufgabe für Unteraufgaben · <kbd className="kbd">P</kbd></div></div>
-          <button className="btn btn-primary" onClick={()=>{setEditA(null);setModal('aufgabe')}}>{Ico.plus} Aufgabe</button>
+          <div><div className="page-title">Launch Plan</div><div className="page-sub">{hauptaufgaben.length} Hauptaufgaben · {gesamtDone}/{hauptaufgaben.length} erledigt · <kbd className="kbd">P</kbd></div></div>
+          <button className="btn btn-primary" onClick={()=>setShowAddPhase(s=>!s)}>{Ico.plus} Hauptaufgabe</button>
         </div>
+
+        {showAddPhase&&(
+          <div className="card" style={{marginBottom:'var(--sp4)',padding:'var(--sp4)'}}>
+            <div style={{fontSize:'var(--text-sm)',fontWeight:700,color:'var(--ink)',marginBottom:'var(--sp3)'}}>Neue Hauptaufgabe zum Launch Plan hinzufügen</div>
+            <div className="form-row" style={{marginBottom:'var(--sp3)'}}>
+              <div className="form-group" style={{marginBottom:0}}>
+                <label className="form-label">Phase</label>
+                <select className="form-input" value={newPhase} onChange={e=>setNewPhase(e.target.value)}>
+                  {phasen.map(p=><option key={p}>{p}</option>)}
+                  <option value="Phase 6 · Neue Phase">+ Neue Phase</option>
+                </select>
+              </div>
+              <div className="form-group" style={{marginBottom:0}}>
+                <label className="form-label">Verantwortlich</label>
+                <select className="form-input" value={newPerson} onChange={e=>setNewPerson(e.target.value as PersonName)}>
+                  {PERSONEN.map(p=><option key={p.name}>{p.name}</option>)}
+                </select>
+              </div>
+              <div className="form-group" style={{marginBottom:0}}>
+                <label className="form-label">Deadline *</label>
+                <input type="date" className="form-input" value={newDeadline} onChange={e=>setNewDeadline(e.target.value)}/>
+              </div>
+            </div>
+            <div className="form-group" style={{marginBottom:'var(--sp3)'}}>
+              <label className="form-label">Aufgabe *</label>
+              <input className="form-input" placeholder="z.B. Verpackungsdesign finalisieren" value={newTitel} onChange={e=>setNewTitel(e.target.value)}
+                onKeyDown={e=>e.key==='Enter'&&addHauptaufgabe()}/>
+            </div>
+            <div className="form-group" style={{marginBottom:'var(--sp3)'}}>
+              <label className="form-label">Gewünschtes Ergebnis *</label>
+              <input className="form-input" placeholder="Wann ist die Aufgabe WIRKLICH erledigt?" value={newErgebnis} onChange={e=>setNewErgebnis(e.target.value)}/>
+            </div>
+            <div style={{display:'flex',gap:'var(--sp2)'}}>
+              <button className="btn btn-primary btn-sm" onClick={addHauptaufgabe} disabled={addingH}>{addingH?'…':'Hinzufügen'}</button>
+              <button className="btn btn-secondary btn-sm" onClick={()=>setShowAddPhase(false)}>Abbrechen</button>
+            </div>
+          </div>
+        )}
         <div className="metric-bar" style={{height:6,borderRadius:'var(--r-sm)',marginBottom:'var(--sp6)'}}>
           <div className="metric-bar-fill" style={{width:`${gesamtPct}%`,background:'var(--signal)',height:6,borderRadius:'var(--r-sm)'}}/>
+        </div>
         </div>
         {loading?<>{Array.from({length:3}).map((_,i)=><div key={i} className="card" style={{padding:'var(--sp4)',marginBottom:'var(--sp4)'}}><SkeletonList rows={3}/></div>)}</>
           :phasen.map(phase=>{
