@@ -684,97 +684,200 @@ export default function App() {
   // ── VIEWS ──────────────────────────────────────────────────────────────────
   function HeuteView() {
     const ap=PERSONEN.find(p=>p.name===aktiv)!
+
+    // Executive summary computed values
+    const gesamtPct=hauptaufgaben.length>0?Math.round(hauptaufgaben.filter(a=>a.status==='Erledigt').length/hauptaufgaben.length*100):0
+    const launchStatus=ueberfaellig>3||gesamtPct<30?'rot':ueberfaellig>0||gesamtPct<70?'gelb':'gruen'
+    const statusColor={'rot':'var(--red)','gelb':'var(--amber)','gruen':'var(--signal)'}[launchStatus]
+    const statusText={'rot':'Rot — Sofort handeln','gelb':'Gelb — Im Plan, aber Risiken','gruen':'Grün — Auf Kurs'}[launchStatus]
+
+    // Blocker tasks
+    const blockerAufgaben=aufgaben.filter(a=>a.blocker&&a.blocker.trim()!==''&&a.status!=='Erledigt')
+
+    // Design awaiting feedback
+    const designFeedbackOffen=ideen.filter(i=>i.status==='Feedback ausstehend'||i.freigabe==='Überarbeiten')
+
+    // Open decisions
+    const offeneEntscheidungen=entscheid.slice(0,3)
+
+    // Timeline — ALL tasks in next 7 days including done
+    const alle7Tage=aufgaben.filter(a=>a.deadline&&a.deadline>=t&&a.deadline<=h7)
+
     return (
       <div>
-        <div className="cockpit-hero">
-          <div className="cockpit-role"><div className="cockpit-dot" style={{background:PERSON_HEX[aktiv]}}/>{ap.role}</div>
-          <div className="cockpit-name">{aktiv}</div>
-          <div className="cockpit-meta">
-            {new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}
-            {ueberfaellig>0&&<span className="cockpit-critical-tag">· {ueberfaellig} überfällig</span>}
+        {/* Executive Summary */}
+        <div className="card" style={{marginBottom:'var(--sp5)',borderLeft:`3px solid ${statusColor}`}}>
+          <div style={{padding:'var(--sp4)'}}>
+            <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
+              <div>
+                <div style={{fontSize:'var(--text-xs)',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:'var(--sp1)'}}>QUADRAS · Launch Status</div>
+                <div style={{fontSize:'var(--text-lg)',fontWeight:700,color:statusColor}}>{statusText}</div>
+              </div>
+              <div style={{textAlign:'right'}}>
+                <div style={{fontSize:'var(--text-4xl)',fontWeight:700,color:statusColor,letterSpacing:'-1px',lineHeight:1}}>{gesamtPct}%</div>
+                <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>Launch Readiness</div>
+              </div>
+            </div>
+            <div className="launch-bar-phases" style={{marginBottom:'var(--sp2)'}}>
+              {phasen.map(phase=>{
+                const items=hauptaufgaben.filter(a=>a.phase===phase)
+                const pct=items.length?Math.round(items.filter(a=>a.status==='Erledigt').length/items.length*100):0
+                return <div key={phase} className="launch-bar-phase" title={`${phase}: ${pct}%`}><div className="launch-bar-phase-fill" style={{width:`${pct}%`}}/></div>
+              })}
+            </div>
+            <div style={{display:'flex',gap:'var(--sp4)',flexWrap:'wrap'}}>
+              {blockerAufgaben.length>0&&<div style={{fontSize:'var(--text-sm)',color:'var(--red)'}}>⚠ {blockerAufgaben.length} Blocker aktiv</div>}
+              {designFeedbackOffen.length>0&&<div style={{fontSize:'var(--text-sm)',color:'var(--amber)',cursor:'pointer'}} onClick={()=>setView('design')}>◈ {designFeedbackOffen.length} Design{designFeedbackOffen.length===1?' wartet':' warten'} auf Feedback</div>}
+              {ueberfaellig>0&&<div style={{fontSize:'var(--text-sm)',color:'var(--red)'}}>{ueberfaellig} Aufgabe{ueberfaellig===1?' überfällig':' überfällig'}</div>}
+              {blockerAufgaben.length===0&&designFeedbackOffen.length===0&&ueberfaellig===0&&<div style={{fontSize:'var(--text-sm)',color:'var(--signal)'}}>Keine kritischen Probleme</div>}
+            </div>
           </div>
         </div>
 
-        {/* Launch Barometer */}
-        <div className="launch-bar">
-          <div className="launch-bar-header"><span className="launch-bar-lbl">Launch-Fortschritt</span><span className="launch-bar-score">{hauptaufgaben.filter(a=>a.status==='Erledigt').length} / {hauptaufgaben.length}</span></div>
-          <div className="launch-bar-phases">
-            {phasen.map(phase=>{
-              const items=hauptaufgaben.filter(a=>a.phase===phase)
-              const pct=items.length?Math.round(items.filter(a=>a.status==='Erledigt').length/items.length*100):0
-              return <div key={phase} className="launch-bar-phase" title={`${phase}: ${pct}%`}><div className="launch-bar-phase-fill" style={{width:`${pct}%`}}/></div>
-            })}
-          </div>
-          <div className="launch-bar-sublabels">{phasen.map(p=><div key={p} className="launch-bar-sublabel">{p.split('·')[1]?.trim()}</div>)}</div>
+        {/* Hero */}
+        <div className="cockpit-hero">
+          <div className="cockpit-role"><div className="cockpit-dot" style={{background:PERSON_HEX[aktiv]}}/>{ap.role}</div>
+          <div className="cockpit-name">{aktiv}</div>
+          <div className="cockpit-meta">{new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
         </div>
 
         {/* Metrics */}
         <div className="metrics-row">
           <div className="metric"><div className="metric-num" style={{color:PERSON_HEX[aktiv]}}>{meineOffen}</div><div className="metric-lbl">Meine offenen</div><div className="metric-bar"><div className="metric-bar-fill" style={{width:`${donePct}%`,background:PERSON_HEX[aktiv]}}/></div></div>
           <div className="metric"><div className="metric-num" style={{color:ueberfaellig>0?'var(--red)':'var(--signal)'}}>{ueberfaellig}</div><div className="metric-lbl">Überfällig</div></div>
-          <div className="metric"><div className="metric-num">{naechste7.length}</div><div className="metric-lbl">Nächste 7 Tage</div></div>
-          <div className="metric"><div className="metric-num c-signal">{donePct}%</div><div className="metric-lbl">Mein Fortschritt</div></div>
+          <div className="metric"><div className="metric-num" style={{color:blockerAufgaben.length>0?'var(--red)':'var(--ink)'}}>{blockerAufgaben.length}</div><div className="metric-lbl">Blocker aktiv</div></div>
+          <div className="metric"><div className="metric-num" style={{color:designFeedbackOffen.length>0?'var(--amber)':'var(--ink)'}}>{designFeedbackOffen.length}</div><div className="metric-lbl">Design-Feedback</div></div>
         </div>
 
-        {/* 7-day timeline */}
-        {naechste7.length>0&&(
-          <div className="card" style={{marginBottom:'var(--sp4)'}}>
-            <div className="cockpit-section-lbl">Nächste 7 Tage</div>
-            <div className="week-timeline">
-              {weekDays.map(day=>{
-                const dayTasks=naechste7.filter(a=>a.deadline===day)
-                return (
-                  <div key={day} className={`week-day${day===t?' today':''}`}>
-                    <div className="week-day-label">{new Date(day+'T12:00').toLocaleDateString('de-DE',{weekday:'short'})}</div>
-                    <div className="week-day-date">{new Date(day+'T12:00').getDate()}</div>
-                    <div className="week-day-tasks">
-                      {dayTasks.map(a=>(
-                        <div key={a.id} className="week-day-task-dot" title={`${a.titel} · ${a.person}`}
-                          style={{background:PERSON_HEX[a.person]||'var(--slate)'}} onClick={()=>setFlyout(a)}>
-                          {a.person[0]}
-                        </div>
-                      ))}
-                    </div>
+        {/* 7-day timeline — includes done tasks (C fix) */}
+        <div className="card" style={{marginBottom:'var(--sp4)'}}>
+          <div className="cockpit-section-lbl">Diese Woche</div>
+          <div className="week-timeline">
+            {weekDays.map(day=>{
+              const dayTasks=alle7Tage.filter(a=>a.deadline===day)
+              return (
+                <div key={day} className={`week-day${day===t?' today':''}`}>
+                  <div className="week-day-label">{new Date(day+'T12:00').toLocaleDateString('de-DE',{weekday:'short'})}</div>
+                  <div className="week-day-date">{new Date(day+'T12:00').getDate()}</div>
+                  <div className="week-day-tasks">
+                    {dayTasks.map(a=>(
+                      <div key={a.id} className="week-day-task-dot"
+                        title={`${a.titel} · ${a.person}${a.status==='Erledigt'?' ✓':''}`}
+                        style={{
+                          background: a.status==='Erledigt'?'var(--bg2)':PERSON_HEX[a.person]||'var(--slate)',
+                          color: a.status==='Erledigt'?'var(--muted)':'var(--surface)',
+                          border: a.status==='Erledigt'?'1px solid var(--border2)':'none',
+                          textDecoration: a.status==='Erledigt'?'line-through':'none',
+                          opacity: a.status==='Erledigt'?0.5:1,
+                        }}
+                        onClick={()=>setFlyout(a)}>
+                        {a.person[0]}
+                      </div>
+                    ))}
+                    {dayTasks.length===0&&<div style={{height:'var(--sp5)'}}/>}
                   </div>
-                )
-              })}
-            </div>
+                </div>
+              )
+            })}
           </div>
-        )}
+        </div>
 
         {/* Critical + Focus */}
         <div className="cockpit-grid">
           <div className="card">
-            {kritisch.length>0?<div className="cockpit-critical-lbl">Kritisch ({kritisch.length})</div>:<div className="cockpit-section-lbl">Kein kritischer Pfad</div>}
-            {loading?<SkeletonList rows={2}/>:kritisch.length===0?<div className="empty"><div className="empty-title c-signal">Alles im grünen Bereich</div></div>:kritisch.slice(0,5).map(a=><AItem key={a.id} a={a} editable/>)}
+            {kritisch.length>0?<div className="cockpit-critical-lbl">Kritisch — sofort handeln ({kritisch.length})</div>:<div className="cockpit-section-lbl">Kein kritischer Pfad</div>}
+            {loading?<SkeletonList rows={2}/>:kritisch.length===0
+              ?<div className="empty"><div className="empty-title c-signal">Alles im grünen Bereich</div></div>
+              :kritisch.slice(0,5).map(a=><AItem key={a.id} a={a} editable/>)}
           </div>
           <div className="card">
             <div className="cockpit-section-lbl">Mein Fokus — Top 3</div>
-            {loading?<SkeletonList rows={3}/>:meineFokus.length===0?<div className="empty"><div className="empty-title c-signal">Keine offenen Aufgaben</div></div>:meineFokus.map(a=><AItem key={a.id} a={a} editable/>)}
+            {loading?<SkeletonList rows={3}/>:meineFokus.length===0
+              ?<div className="empty"><div className="empty-title c-signal">Keine offenen Aufgaben</div></div>
+              :meineFokus.map(a=><AItem key={a.id} a={a} editable/>)}
           </div>
         </div>
 
-        {/* Area status overview */}
+        {/* B: Blocker Board */}
+        {blockerAufgaben.length>0&&(
+          <div className="card" style={{marginBottom:'var(--sp4)',borderLeft:'2px solid var(--red)'}}>
+            <div className="cockpit-critical-lbl">Blocker — müssen sofort gelöst werden ({blockerAufgaben.length})</div>
+            {blockerAufgaben.map(a=>(
+              <div key={a.id} className="aufgabe" style={{borderBottom:'1px solid var(--border)'}}>
+                <div className="a-body">
+                  <div className="a-titel" onClick={()=>setFlyout(a)} style={{cursor:'pointer'}}>{a.titel}</div>
+                  <div style={{fontSize:'var(--text-sm)',color:'var(--red)',marginTop:'var(--sp1)',fontWeight:600}}>
+                    Blocker: {a.blocker}
+                  </div>
+                  <div className="a-meta-line" style={{marginTop:'var(--sp1)'}}>
+                    <span style={{color:PERSON_HEX[a.person]||'var(--mid)',fontWeight:600}}>{a.person}</span>
+                    <span className="a-meta-dot"/><span>{a.projekt}</span>
+                  </div>
+                </div>
+                <button className="icon-btn" onClick={()=>setFlyout(a)}>{Ico.edit}</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* A: Design Feedback waiting */}
+        {designFeedbackOffen.length>0&&(
+          <div className="card" style={{marginBottom:'var(--sp4)',borderLeft:'2px solid var(--amber)'}}>
+            <div style={{padding:'var(--sp3) var(--sp4) var(--sp2)',borderBottom:'1px solid var(--amber-bg)',background:'var(--amber-bg)',fontSize:'var(--text-xs)',fontWeight:700,color:'var(--amber)',textTransform:'uppercase',letterSpacing:'0.1em',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span>Design wartet auf Feedback ({designFeedbackOffen.length})</span>
+              <button className="btn btn-xs btn-amber" onClick={()=>setView('design')}>Design Studio öffnen</button>
+            </div>
+            {designFeedbackOffen.slice(0,4).map(i=>(
+              <div key={i.id} style={{display:'flex',alignItems:'center',gap:'var(--sp3)',padding:'var(--sp2) var(--sp4)',borderBottom:'1px solid var(--border)',cursor:'pointer'}} onClick={()=>{setDesignFlyout(i);setView('design')}}>
+                <div style={{width:36,height:36,borderRadius:'var(--r-patch)',background:'var(--bg2)',overflow:'hidden',flexShrink:0}}>
+                  {i.url&&i.url.startsWith('https://')?<img src={i.url} alt={i.titel} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'var(--text-xs)',color:'var(--muted)'}}>{i.kategorie[0]}</div>}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:'var(--text-base)',fontWeight:500,color:'var(--ink)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{i.titel}</div>
+                  <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>{i.kategorie} · {i.von} · <span style={{color:'var(--amber)',fontWeight:600}}>{i.freigabe==='Überarbeiten'?'Überarbeiten':'Feedback ausstehend'}</span></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Area status */}
         {areaStats.length>0&&(
           <>
             <div style={{fontSize:'var(--text-md)',fontWeight:700,marginBottom:'var(--sp3)',color:'var(--ink)'}}>Bereichsstatus</div>
             <div className="area-grid" style={{marginBottom:'var(--sp5)'}}>
               {areaStats.map(a=>{
                 const pct=a.total>0?Math.round(a.done/a.total*100):0
+                const ampel=a.krit>0?'var(--red)':a.offen===0?'var(--signal)':pct>70?'var(--signal)':'var(--amber)'
                 return (
-                  <div key={a.proj} className="area-card" onClick={()=>{setFProjekt(a.proj);setView('aufgaben')}}>
+                  <div key={a.proj} className="area-card" onClick={()=>{setFProjekt(a.proj);setView('aufgaben')}} style={{borderTop:`2px solid ${ampel}`}}>
                     <div className="area-name" title={a.proj}>{a.proj}</div>
                     <div className="area-stats">
                       {a.offen} offen{a.krit>0&&<span style={{color:'var(--red)',marginLeft:'var(--sp2)',fontWeight:700}}>· {a.krit} kritisch</span>}
                     </div>
-                    <div className="area-bar">
-                      <div className="area-bar-fill" style={{width:`${pct}%`,background:a.krit>0?'var(--red)':a.offen===0?'var(--signal)':'var(--slate)'}}/>
-                    </div>
+                    <div className="area-bar"><div className="area-bar-fill" style={{width:`${pct}%`,background:ampel}}/></div>
                   </div>
                 )
               })}
             </div>
           </>
+        )}
+
+        {/* Open Decisions on Heute */}
+        {offeneEntscheidungen.length>0&&(
+          <div className="card" style={{marginBottom:'var(--sp5)'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'var(--sp3) var(--sp4) var(--sp2)',borderBottom:'1px solid var(--border)'}}>
+              <div className="cockpit-section-lbl" style={{padding:0,border:'none'}}>Letzte Entscheidungen</div>
+              <button className="btn btn-xs btn-secondary" onClick={()=>setView('entscheidungen')}>Alle</button>
+            </div>
+            {offeneEntscheidungen.map(e=>(
+              <div key={e.id} style={{padding:'var(--sp2) var(--sp4)',borderBottom:'1px solid var(--border)'}}>
+                <div style={{fontSize:'var(--text-base)',fontWeight:500,color:'var(--ink)',marginBottom:2}}>{e.titel}</div>
+                {e.naechster_schritt&&<div style={{fontSize:'var(--text-xs)',color:'var(--signal)'}}>→ {e.naechster_schritt}</div>}
+                <div style={{fontSize:'var(--text-xs)',color:'var(--muted)',marginTop:2}}>{e.projekt} · {fmtDate(e.datum)}</div>
+              </div>
+            ))}
+          </div>
         )}
 
         {/* Team */}
