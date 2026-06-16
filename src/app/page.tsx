@@ -1,845 +1,1064 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
-import { supabase, OWNERS, STATUS_AUFGABEN, PRIO, STATUS_PRODUKT, STATUS_LIEFERANT, BEWERTUNG, STATUS_SAMPLE, STATUS_CONTENT, KAT_AUFGABEN, KAT_FINANZEN } from '../lib/supabase'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import {
+  supabase, PERSONEN, PROJEKTE, PRIOS, STATUSES,
+  DESIGN_KATS, DESIGN_STATUS, FREIGABE_STATUS, PERSON_HEX, PRIO_HEX,
+  Aufgabe, Entscheidung, Datei, DesignIdee, Comment, FeedbackEntry,
+  todayStr, in48hStr, in7dStr, isOverdue, isSoon, safeDate, fmtDate,
+  logActivity, type PersonName
+} from '../lib/supabase'
 
-// ── Types ──────────────────────────────────────────────────────────────────────
-type Aufgabe = { id: string; titel: string; status: string; prioritaet: string; owner: string; deadline: string|null; definition_of_done: string; kategorie: string; blocker: string; notiz: string; produkt_id: string|null; lieferant_id: string|null; erledigt_am: string|null; created_at: string }
-type Produkt = { id: string; name: string; status: string; lead: string; naechster_schritt: string; naechster_schritt_deadline: string|null; ziel_vk: number; ziel_ek: number; kategorie: string; offene_fragen: string; created_at: string }
-type Lieferant = { id: string; name: string; kategorie: string; status: string; bewertung: string; ansprechpartner: string; email: string; whatsapp: string; letzter_kontakt: string|null; naechster_followup: string|null; notizen: string; moq: number; ek_preis: number; sample_kosten_usd: number; lt_sample_tage: number; lt_bulk_tage: number; grs_zertifikat: boolean; created_at: string }
-type Sample = { id: string; name: string; status: string; produkt_id: string|null; lieferant_id: string|null; version: number; angefragt_am: string|null; erwartet_am: string|null; angekommen_am: string|null; tracking_nr: string; kosten_usd: number; review_gut: string; review_fehlt: string; aenderungen: string; score: number; entscheidung: string; freigabe: boolean; naechster_schritt: string; created_at: string }
-type ContentItem = { id: string; titel: string; status: string; format: string; plattform: string; owner: string; veroeffentlichungsdatum: string|null; produkt_id: string|null; caption: string; visual_idee: string; created_at: string }
-type Finanzen = { id: string; position: string; kategorie: string; betrag_eur: number; waehrung: string; bezahlt: boolean; datum: string|null; produkt_id: string|null; lieferant_id: string|null; kommentar: string; created_at: string }
-type Entscheidung = { id: string; entscheidung: string; warum: string; entschieden_von: string; datum: string; auswirkung: string; status: string; naechster_schritt: string; produkt_id: string|null; created_at: string }
+type View = 'heute'|'plan'|'aufgaben'|'design'|'dateien'|'entscheidungen'
+type Toast = { id:number; msg:string; type:'default'|'success'|'error' }
+type ActivityEntry = { id:string; entity_type:string; entity_titel:string; action:string; person:string; created_at:string }
+let toastId = 0
 
-type View = 'hq'|'aufgaben'|'produkte'|'lieferanten'|'samples'|'content'|'finanzen'|'entscheidungen'|'board-at'|'board-op'|'board-dc'
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-const today = () => new Date().toISOString().split('T')[0]
-const isOverdue = (d: string|null) => d && d < today()
-const fmt = (d: string|null) => d ? new Date(d).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'}) : '–'
-const prioBadge = (p: string) => { const m: Record<string,string> = {P0:'badge-p0',P1:'badge-p1',P2:'badge-p2',P3:'badge-p3'}; return m[p]||'badge-gray' }
-const ownerChip = (o: string) => { const m: Record<string,string> = {AT:'owner-at',OP:'owner-op',DC:'owner-dc'}; return m[o]||'' }
-const statusColor = (s: string): string => {
-  if(['Aktiv','Freigegeben','Live','Launchbereit','Erledigt'].includes(s)) return 'badge-green'
-  if(['Blockiert','Abgelehnt','P0'].includes(s)) return 'badge-red'
-  if(['Wartet extern','Angebot','In Review','Änderungen'].includes(s)) return 'badge-amber'
-  if(['In Arbeit','Sample läuft','In Produktion'].includes(s)) return 'badge-blue'
-  return 'badge-gray'
+const Ico = {
+  heute:  <svg className="nav-svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>,
+  plan:   <svg className="nav-svg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>,
+  aufg:   <svg className="nav-svg" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>,
+  design: <svg className="nav-svg" viewBox="0 0 24 24"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>,
+  files:  <svg className="nav-svg" viewBox="0 0 24 24"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>,
+  decide: <svg className="nav-svg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>,
+  check:  <svg style={{width:9,height:9}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
+  x:      <svg style={{width:11,height:11}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+  edit:   <svg style={{width:13,height:13}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
+  trash:  <svg style={{width:13,height:13}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>,
+  plus:   <svg style={{width:14,height:14}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+  file:   <svg style={{width:17,height:17}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>,
+  img:    <svg style={{width:17,height:17}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>,
+  menu:   <svg style={{width:18,height:18}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
+  empty:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 15s1.5-2 4-2 4 2 4 2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>,
 }
 
-// ── Modal Form ─────────────────────────────────────────────────────────────────
-function Modal({ title, onClose, children }: { title: string; onClose: ()=>void; children: React.ReactNode }) {
-  return (
-    <div className="modal-overlay" onClick={e => e.target===e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-header">
-          <span className="modal-title">{title}</span>
-          <button className="modal-close" onClick={onClose}>×</button>
-        </div>
-        {children}
-      </div>
-    </div>
-  )
-}
-
-// ── AufgabeForm ────────────────────────────────────────────────────────────────
-function AufgabeForm({ initial, produkte, lieferanten, currentOwner, onSave, onClose }:
-  { initial?: Partial<Aufgabe>; produkte: Produkt[]; lieferanten: Lieferant[]; currentOwner: string; onSave: ()=>void; onClose: ()=>void }) {
-  const [f, setF] = useState({
-    titel: initial?.titel||'', status: initial?.status||'Inbox', prioritaet: initial?.prioritaet||'P2',
-    owner: initial?.owner||currentOwner, deadline: initial?.deadline||'', definition_of_done: initial?.definition_of_done||'',
-    kategorie: initial?.kategorie||'', blocker: initial?.blocker||'', notiz: initial?.notiz||'',
-    produkt_id: initial?.produkt_id||null as string|null, lieferant_id: initial?.lieferant_id||null as string|null,
-  })
-  const [saving, setSaving] = useState(false)
-  const up = (k: string, v: string|null) => setF(p=>({...p,[k]:v}))
-
-  const save = async () => {
-    if(!f.titel.trim()) return alert('Titel ist Pflichtfeld')
-    if(!f.owner) return alert('Owner ist Pflichtfeld')
-    if(!f.deadline) return alert('Deadline ist Pflichtfeld')
-    if(!f.definition_of_done.trim()) return alert('Definition of Done ist Pflichtfeld')
-    setSaving(true)
-    const data = { ...f, deadline: f.deadline||null, produkt_id: f.produkt_id||null, lieferant_id: f.lieferant_id||null }
-    if(initial?.id) {
-      await supabase.from('aufgaben').update(data).eq('id', initial.id)
-    } else {
-      await supabase.from('aufgaben').insert(data)
-    }
-    setSaving(false); onSave(); onClose()
-  }
-
-  return (
-    <div>
-      <div className="alert alert-amber" style={{marginBottom:16}}>
-        ⚡ 5-Punkt-Regel: Aktionsverb · Owner · Deadline · Definition of Done · Kontext
-      </div>
-      <div className="form-group"><label>Aufgabe (Aktionsverb + Kontext)*</label><input placeholder="z.B. Nana Follow-up zu Patch v1 Sample senden" value={f.titel} onChange={e=>up('titel',e.target.value)}/></div>
-      <div className="form-row">
-        <div className="form-group"><label>Owner*</label><select value={f.owner} onChange={e=>up('owner',e.target.value)}>{OWNERS.map(o=><option key={o}>{o}</option>)}</select></div>
-        <div className="form-group"><label>Priorität*</label><select value={f.prioritaet} onChange={e=>up('prioritaet',e.target.value)}>{PRIO.map(p=><option key={p}>{p}</option>)}</select></div>
-      </div>
-      <div className="form-row">
-        <div className="form-group"><label>Deadline*</label><input type="date" value={f.deadline} onChange={e=>up('deadline',e.target.value)}/></div>
-        <div className="form-group"><label>Status</label><select value={f.status} onChange={e=>up('status',e.target.value)}>{STATUS_AUFGABEN.map(s=><option key={s}>{s}</option>)}</select></div>
-      </div>
-      <div className="form-group"><label>Definition of Done* — Woran erkennen wir, dass es WIRKLICH fertig ist?</label><textarea placeholder="z.B. Antwort von Nana erhalten, ETA und Tracking-Nr in Notion dokumentiert" value={f.definition_of_done} onChange={e=>up('definition_of_done',e.target.value)} style={{minHeight:60}}/></div>
-      <div className="form-row">
-        <div className="form-group"><label>Kategorie</label><select value={f.kategorie} onChange={e=>up('kategorie',e.target.value)}><option value="">–</option>{KAT_AUFGABEN.map(k=><option key={k}>{k}</option>)}</select></div>
-        <div className="form-group"><label>Produkt</label><select value={f.produkt_id||''} onChange={e=>up('produkt_id',e.target.value||null)}><option value="">–</option>{produkte.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-      </div>
-      <div className="form-row">
-        <div className="form-group"><label>Lieferant</label><select value={f.lieferant_id||''} onChange={e=>up('lieferant_id',e.target.value||null)}><option value="">–</option>{lieferanten.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
-        <div className="form-group"><label>Blocker</label><input placeholder="Was blockiert?" value={f.blocker} onChange={e=>up('blocker',e.target.value)}/></div>
-      </div>
-      <div className="form-group"><label>Notiz / Kontext</label><textarea placeholder="Alles was der Owner wissen muss" value={f.notiz} onChange={e=>up('notiz',e.target.value)} style={{minHeight:50}}/></div>
-      <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:8}}>
-        <button className="btn btn-outline" onClick={onClose}>Abbrechen</button>
-        <button className="btn btn-primary" onClick={save} disabled={saving}>{saving?'Speichern…':'Aufgabe speichern'}</button>
-      </div>
-    </div>
-  )
-}
-
-// ── Main App ───────────────────────────────────────────────────────────────────
 export default function App() {
-  const [view, setView] = useState<View>('hq')
-  const [currentOwner, setCurrentOwner] = useState('AT')
-  const [aufgaben, setAufgaben] = useState<Aufgabe[]>([])
-  const [produkte, setProdukte] = useState<Produkt[]>([])
-  const [lieferanten, setLieferanten] = useState<Lieferant[]>([])
-  const [samples, setSamples] = useState<Sample[]>([])
-  const [content, setContent] = useState<ContentItem[]>([])
-  const [finanzen, setFinanzen] = useState<Finanzen[]>([])
-  const [entscheidungen, setEntscheidungen] = useState<Entscheidung[]>([])
-  const [showAufgabeModal, setShowAufgabeModal] = useState(false)
-  const [editAufgabe, setEditAufgabe] = useState<Aufgabe|null>(null)
-  const [showProduktModal, setShowProduktModal] = useState(false)
-  const [showLieferantModal, setShowLieferantModal] = useState(false)
-  const [showSampleModal, setShowSampleModal] = useState(false)
-  const [showContentModal, setShowContentModal] = useState(false)
-  const [showFinanzModal, setShowFinanzModal] = useState(false)
-  const [showEntscheidungModal, setShowEntscheidungModal] = useState(false)
+  const [view,        setView]        = useState<View>('heute')
+  const [aktiv,       setAktiv]       = useState<PersonName>('Alexander')
+  const [aufgaben,    setAufgaben]    = useState<Aufgabe[]>([])
+  const [entscheid,   setEntscheid]   = useState<Entscheidung[]>([])
+  const [dateien,     setDateien]     = useState<Datei[]>([])
+  const [ideen,       setIdeen]       = useState<DesignIdee[]>([])
+  const [activity,    setActivity]    = useState<ActivityEntry[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [toasts,      setToasts]      = useState<Toast[]>([])
+  const [modal,       setModal]       = useState<null|'aufgabe'|'entscheidung'|'datei'|'design'|'confirm'>(null)
+  const [editA,       setEditA]       = useState<Aufgabe|null>(null)
+  const [editD,       setEditD]       = useState<DesignIdee|null>(null)
+  const [flyout,      setFlyout]      = useState<Aufgabe|null>(null)
+  const [designFlyout,setDesignFlyout]= useState<DesignIdee|null>(null)
+  const [confirmCb,   setConfirmCb]   = useState<{msg:string;fn:()=>void}|null>(null)
+  const [uploading,   setUploading]   = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [fPerson,setFPerson]=useState('Alle')
+  const [fProjekt,setFProjekt]=useState('Alle')
+  const [fStatus,setFStatus]=useState('Offen')
+  const [fDKat,setFDKat]=useState('Alle')
+  const [fDFG,setFDFG]=useState('Alle')
 
-  const load = useCallback(async () => {
-    const [a,p,l,s,c,f,e] = await Promise.all([
-      supabase.from('aufgaben').select('*').order('created_at',{ascending:false}),
-      supabase.from('produkte').select('*').order('created_at',{ascending:false}),
-      supabase.from('lieferanten').select('*').order('created_at',{ascending:false}),
-      supabase.from('samples').select('*').order('created_at',{ascending:false}),
-      supabase.from('content').select('*').order('created_at',{ascending:false}),
-      supabase.from('finanzen').select('*').order('datum',{ascending:false}),
+  const toast = useCallback((msg:string,type:Toast['type']='default')=>{
+    const id=++toastId; setToasts(t=>[...t,{id,msg,type}])
+    setTimeout(()=>setToasts(t=>t.filter(x=>x.id!==id)),3000)
+  },[])
+
+  const confirm = useCallback((msg:string,fn:()=>void)=>{ setConfirmCb({msg,fn}); setModal('confirm') },[])
+
+  const loadActivity = useCallback(async()=>{
+    const {data}=await supabase.from('activity_log').select('*').order('created_at',{ascending:false}).limit(20)
+    if(data) setActivity(data)
+  },[])
+
+  const loadAll = useCallback(async()=>{
+    const [a,e,d,i]=await Promise.all([
+      supabase.from('aufgaben').select('*').order('sortierung').order('created_at'),
       supabase.from('entscheidungen').select('*').order('datum',{ascending:false}),
+      supabase.from('dateien').select('*').order('created_at',{ascending:false}),
+      supabase.from('design_ideen').select('*').order('created_at',{ascending:false}),
     ])
     if(a.data) setAufgaben(a.data)
-    if(p.data) setProdukte(p.data)
-    if(l.data) setLieferanten(l.data)
-    if(s.data) setSamples(s.data)
-    if(c.data) setContent(c.data)
-    if(f.data) setFinanzen(f.data)
-    if(e.data) setEntscheidungen(e.data)
-  }, [])
+    if(e.data) setEntscheid(e.data)
+    if(d.data) setDateien(d.data)
+    if(i.data) setIdeen(i.data)
+    setLoading(false)
+    loadActivity()
+  },[loadActivity])
 
-  useEffect(() => { load() }, [load])
+  useEffect(()=>{ loadAll() },[loadAll])
 
-  // Realtime
-  useEffect(() => {
-    const tables = ['aufgaben','produkte','lieferanten','samples','content','finanzen','entscheidungen']
-    const subs = tables.map(t => supabase.channel(`rt-${t}`).on('postgres_changes',{event:'*',schema:'public',table:t},()=>load()).subscribe())
-    return () => { subs.forEach(s => supabase.removeChannel(s)) }
-  }, [load])
+  // Optimised realtime — diff injection
+  useEffect(()=>{
+    const ch=supabase.channel('quadras-v7')
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'aufgaben'},({new:n})=>{
+        setAufgaben(prev=>[n as Aufgabe,...prev])
+      })
+      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'aufgaben'},({new:n})=>{
+        const u=n as Aufgabe
+        setAufgaben(prev=>prev.map(a=>a.id===u.id?u:a))
+        setFlyout(prev=>prev?.id===u.id?u:prev)
+      })
+      .on('postgres_changes',{event:'DELETE',schema:'public',table:'aufgaben'},({old})=>{
+        setAufgaben(prev=>prev.filter(a=>a.id!==(old as {id:string}).id))
+      })
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'design_ideen'},({new:n})=>{
+        setIdeen(prev=>[n as DesignIdee,...prev])
+      })
+      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'design_ideen'},({new:n})=>{
+        const u=n as DesignIdee
+        setIdeen(prev=>prev.map(i=>i.id===u.id?u:i))
+        setDesignFlyout(prev=>prev?.id===u.id?u:prev)
+      })
+      .on('postgres_changes',{event:'DELETE',schema:'public',table:'design_ideen'},({old})=>{
+        setIdeen(prev=>prev.filter(i=>i.id!==(old as {id:string}).id))
+      })
+      .on('postgres_changes',{event:'*',schema:'public',table:'entscheidungen'},()=>{
+        supabase.from('entscheidungen').select('*').order('datum',{ascending:false}).then(({data})=>{if(data)setEntscheid(data)})
+      })
+      .on('postgres_changes',{event:'*',schema:'public',table:'dateien'},()=>{
+        supabase.from('dateien').select('*').order('created_at',{ascending:false}).then(({data})=>{if(data)setDateien(data)})
+      })
+      .on('postgres_changes',{event:'*',schema:'public',table:'activity_log'},()=>{ loadActivity() })
+      .subscribe()
+    return ()=>{ supabase.removeChannel(ch) }
+  },[loadActivity])
 
-  const deleteAufgabe = async (id: string) => { if(confirm('Aufgabe löschen?')) { await supabase.from('aufgaben').delete().eq('id',id); load() } }
-  const updateStatus = async (id: string, status: string) => { await supabase.from('aufgaben').update({status}).eq('id',id); load() }
-  const updateAufgabeField = async (id: string, field: string, value: string|boolean|null) => { await supabase.from('aufgaben').update({[field]:value}).eq('id',id); load() }
-
-  // Computed metrics
-  const t = today()
-  const p0Open = aufgaben.filter(a=>a.prioritaet==='P0'&&a.status!=='Erledigt'&&a.status!=='Gestrichen')
-  const blocked = aufgaben.filter(a=>a.status==='Blockiert')
-  const overdue = aufgaben.filter(a=>a.deadline&&a.deadline<t&&a.status!=='Erledigt'&&a.status!=='Gestrichen')
-  const followupsToday = lieferanten.filter(l=>l.naechster_followup===t)
-  const samplesReview = samples.filter(s=>s.status==='Angekommen'||s.status==='In Review'||s.status==='Änderungen')
-  const produkteNoNext = produkte.filter(p=>!p.naechster_schritt||p.naechster_schritt.trim()==='')
-  const myTasks = aufgaben.filter(a=>a.owner===currentOwner&&a.status!=='Erledigt'&&a.status!=='Gestrichen')
-  const todayTasks = aufgaben.filter(a=>a.status==='Heute'&&a.status!=='Erledigt')
-
-  const getPName = (id: string|null) => produkte.find(p=>p.id===id)?.name||'–'
-  const getLName = (id: string|null) => lieferanten.find(l=>l.id===id)?.name||'–'
-
-  const navItems: {id:View;label:string;icon:string}[] = [
-    {id:'hq',label:'HQ Cockpit',icon:'dashboard'},
-    {id:'board-at',label:'Board · AT',icon:'user'},
-    {id:'board-op',label:'Board · OP',icon:'user'},
-    {id:'board-dc',label:'Board · DC',icon:'user'},
-    {id:'aufgaben',label:'Aufgaben',icon:'checkbox'},
-    {id:'produkte',label:'Produkte',icon:'box'},
-    {id:'lieferanten',label:'Lieferanten',icon:'building-factory'},
-    {id:'samples',label:'Samples',icon:'flask'},
-    {id:'content',label:'Content',icon:'speakerphone'},
-    {id:'finanzen',label:'Finanzen',icon:'currency-euro'},
-    {id:'entscheidungen',label:'Entscheidungen',icon:'brain'},
-  ]
-
-  // ── Aufgaben Table ────────────────────────────────────────────────────────────
-  function AufgabenTable({ tasks, title }: { tasks: Aufgabe[]; title?: string }) {
-    if(tasks.length===0) return <div className="empty">Keine Aufgaben</div>
-    return (
-      <div className="table-wrap">
-        {title && <div style={{fontSize:12,fontWeight:600,color:'var(--mid)',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.04em'}}>{title}</div>}
-        <table>
-          <thead><tr><th>Aufgabe</th><th>Owner</th><th>Prio</th><th>Deadline</th><th>Status</th><th>Produkt</th><th></th></tr></thead>
-          <tbody>{tasks.map(a=>(
-            <tr key={a.id} className={isOverdue(a.deadline)?'overdue':''}>
-              <td style={{maxWidth:300}}>
-                <div style={{fontWeight:500,fontSize:13}}>{a.titel}</div>
-                {a.blocker&&<div style={{fontSize:11,color:'var(--red)',marginTop:2}}>⚠ {a.blocker}</div>}
-                {a.definition_of_done&&<div style={{fontSize:11,color:'var(--mid)',marginTop:1}}>✓ {a.definition_of_done}</div>}
-              </td>
-              <td><span className={`owner-chip ${ownerChip(a.owner)}`}>{a.owner}</span></td>
-              <td><span className={`badge ${prioBadge(a.prioritaet)}`}>{a.prioritaet}</span></td>
-              <td style={{color:isOverdue(a.deadline)?'var(--red)':'inherit',fontWeight:isOverdue(a.deadline)?600:400}}>{fmt(a.deadline)}</td>
-              <td>
-                <select value={a.status} onChange={e=>updateStatus(a.id,e.target.value)} style={{width:130,padding:'3px 6px',fontSize:12}}>
-                  {STATUS_AUFGABEN.map(s=><option key={s}>{s}</option>)}
-                </select>
-              </td>
-              <td style={{fontSize:12,color:'var(--mid)'}}>{getPName(a.produkt_id)}</td>
-              <td>
-                <div style={{display:'flex',gap:4}}>
-                  <button className="btn btn-outline btn-sm" onClick={()=>{setEditAufgabe(a);setShowAufgabeModal(true)}}>Edit</button>
-                  <button className="btn btn-danger btn-sm" onClick={()=>deleteAufgabe(a.id)}>×</button>
-                </div>
-              </td>
-            </tr>
-          ))}</tbody>
-        </table>
-      </div>
-    )
-  }
-
-  // ── HQ View ───────────────────────────────────────────────────────────────────
-  function HQView() {
-    return (
-      <div>
-        <div className="page-header"><h2>QUADRAS HQ</h2><p>Central operating system · Product · Supplier · Launch · Execution</p></div>
-
-        <div className="topbar">
-          <div className="topbar-item">Monatsfokus: <span>Cap Sample v1 freigeben</span></div>
-          <div className="topbar-item">Launch-Ziel: <span>Q3 2026</span></div>
-          <div className="topbar-item">Team: <span>{currentOwner} aktiv</span></div>
-        </div>
-
-        <div className="metrics">
-          <div className="metric"><div className="metric-label">P0 offen</div><div className={`metric-value ${p0Open.length>0?'red':'green'}`}>{p0Open.length}</div></div>
-          <div className="metric"><div className="metric-label">Blockiert</div><div className={`metric-value ${blocked.length>0?'red':'green'}`}>{blocked.length}</div></div>
-          <div className="metric"><div className="metric-label">Überfällig</div><div className={`metric-value ${overdue.length>0?'amber':'green'}`}>{overdue.length}</div></div>
-          <div className="metric"><div className="metric-label">Follow-ups heute</div><div className={`metric-value ${followupsToday.length>0?'amber':'green'}`}>{followupsToday.length}</div></div>
-          <div className="metric"><div className="metric-label">Samples in Review</div><div className={`metric-value ${samplesReview.length>0?'signal':'green'}`}>{samplesReview.length}</div></div>
-          <div className="metric"><div className="metric-label">Produkte o. Schritt</div><div className={`metric-value ${produkteNoNext.length>0?'red':'green'}`}>{produkteNoNext.length}</div></div>
-        </div>
-
-        <div className="quick-actions">
-          <button className="btn btn-primary" onClick={()=>{setEditAufgabe(null);setShowAufgabeModal(true)}}>+ Aufgabe</button>
-          <button className="btn btn-danger" onClick={()=>{setEditAufgabe({prioritaet:'P0'} as Aufgabe);setShowAufgabeModal(true)}}>+ P0-Aufgabe</button>
-          <button className="btn btn-outline" onClick={()=>setShowLieferantModal(true)}>+ Lieferant</button>
-          <button className="btn btn-outline" onClick={()=>setShowSampleModal(true)}>+ Sample</button>
-          <button className="btn btn-outline" onClick={()=>setShowEntscheidungModal(true)}>+ Entscheidung</button>
-          <button className="btn btn-outline" onClick={()=>setShowContentModal(true)}>+ Content-Idee</button>
-        </div>
-
-        {p0Open.length>0&&(
-          <div className="alert alert-red" style={{marginBottom:16}}>
-            🔴 {p0Open.length} offene P0-Aufgaben — sofort handeln: {p0Open.slice(0,3).map(a=>a.titel).join(' · ')}
-          </div>
-        )}
-        {overdue.length>0&&(
-          <div className="alert alert-amber" style={{marginBottom:16}}>
-            ⚠ {overdue.length} überfällige Aufgaben: {overdue.slice(0,3).map(a=>a.titel).join(' · ')}
-          </div>
-        )}
-
-        <div className="grid-2" style={{marginBottom:16}}>
-          <div className="card">
-            <div className="card-header"><span className="card-title">Meine Aufgaben heute · {currentOwner}</span></div>
-            <AufgabenTable tasks={myTasks.filter(a=>a.status==='Heute').slice(0,8)}/>
-            {myTasks.filter(a=>a.status==='Heute').length===0&&<div className="empty">Keine Heute-Aufgaben</div>}
-          </div>
-          <div className="card">
-            <div className="card-header"><span className="card-title">P0 Aufgaben — Team</span></div>
-            <AufgabenTable tasks={p0Open.slice(0,8)}/>
-          </div>
-        </div>
-
-        <div className="grid-2" style={{marginBottom:16}}>
-          <div className="card">
-            <div className="card-header"><span className="card-title">Blockiert</span></div>
-            <AufgabenTable tasks={blocked.slice(0,6)}/>
-          </div>
-          <div className="card">
-            <div className="card-header"><span className="card-title">Überfällig</span></div>
-            <AufgabenTable tasks={overdue.slice(0,6)}/>
-          </div>
-        </div>
-
-        <div className="grid-3" style={{marginBottom:16}}>
-          <div className="card">
-            <div className="card-header"><span className="card-title">Samples in Review</span></div>
-            {samplesReview.length===0?<div className="empty">Keine</div>:<div className="table-wrap"><table><thead><tr><th>Sample</th><th>Status</th><th>Score</th></tr></thead><tbody>{samplesReview.map(s=><tr key={s.id}><td style={{fontWeight:500,fontSize:12}}>{s.name}</td><td><span className={`badge ${statusColor(s.status)}`}>{s.status}</span></td><td>{s.score||'–'}/10</td></tr>)}</tbody></table></div>}
-          </div>
-          <div className="card">
-            <div className="card-header"><span className="card-title">Supplier Follow-ups heute</span></div>
-            {followupsToday.length===0?<div className="empty">Keine fällig</div>:<div className="table-wrap"><table><thead><tr><th>Lieferant</th><th>Bewertung</th></tr></thead><tbody>{followupsToday.map(l=><tr key={l.id}><td style={{fontWeight:500,fontSize:12}}>{l.name}</td><td><span className={`badge ${l.bewertung==='A'?'badge-green':'badge-gray'}`}>{l.bewertung}</span></td></tr>)}</tbody></table></div>}
-          </div>
-          <div className="card">
-            <div className="card-header"><span className="card-title">Produkte — Needs Attention</span></div>
-            {produkteNoNext.length===0?<div className="empty">Alle Produkte haben nächsten Schritt ✓</div>:<div className="table-wrap"><table><thead><tr><th>Produkt</th><th>Status</th></tr></thead><tbody>{produkteNoNext.map(p=><tr key={p.id}><td style={{fontWeight:500,fontSize:12}}>{p.name}</td><td><span className={`badge ${statusColor(p.status)}`}>{p.status}</span></td></tr>)}</tbody></table></div>}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-header"><span className="card-title">Produktpipeline</span></div>
-          <div className="kanban">
-            {STATUS_PRODUKT.slice(0,10).map(s=>(
-              <div className="kanban-col" key={s}>
-                <div className="kanban-col-header">{s}</div>
-                <div className="kanban-col-body">
-                  {produkte.filter(p=>p.status===s).map(p=>(
-                    <div className="kanban-card" key={p.id}>
-                      <div className="kanban-card-title">{p.name}</div>
-                      <div className="kanban-card-meta">
-                        {p.lead&&<span className={`owner-chip ${ownerChip(p.lead)}`}>{p.lead}</span>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // ── Personal Board ────────────────────────────────────────────────────────────
-  function PersonalBoard({ owner }: { owner: string }) {
-    const mine = aufgaben.filter(a=>a.owner===owner&&a.status!=='Erledigt'&&a.status!=='Gestrichen')
-    const mineToday = mine.filter(a=>a.status==='Heute')
-    const mineWeek = mine.filter(a=>a.status==='Diese Woche')
-    const mineOverdue = mine.filter(a=>a.deadline&&a.deadline<t&&a.status!=='Erledigt')
-    const mineBlocked = mine.filter(a=>a.status==='Blockiert')
-    const mineWaiting = mine.filter(a=>a.status==='Wartet extern')
-    const mineP0 = mine.filter(a=>a.prioritaet==='P0')
-    const roleDesc = {AT:'Founder · Brand & Product Lead',OP:'Operations · Supplier & Production Lead',DC:'Design · Content · Website Lead'}[owner]||''
-    return (
-      <div>
-        <div className="page-header">
-          <h2>Board · {owner}</h2>
-          <p>{roleDesc}</p>
-        </div>
-        {mineP0.length>0&&<div className="alert alert-red">🔴 {mineP0.length} P0-Aufgaben offen: {mineP0.slice(0,2).map(a=>a.titel).join(' · ')}</div>}
-        {mineOverdue.length>0&&<div className="alert alert-amber">⚠ {mineOverdue.length} Aufgaben überfällig</div>}
-        <div className="metrics">
-          <div className="metric"><div className="metric-label">Heute</div><div className={`metric-value ${mineToday.length>0?'signal':'green'}`}>{mineToday.length}</div></div>
-          <div className="metric"><div className="metric-label">Diese Woche</div><div className="metric-value">{mineWeek.length}</div></div>
-          <div className="metric"><div className="metric-label">Überfällig</div><div className={`metric-value ${mineOverdue.length>0?'red':'green'}`}>{mineOverdue.length}</div></div>
-          <div className="metric"><div className="metric-label">P0 offen</div><div className={`metric-value ${mineP0.length>0?'red':'green'}`}>{mineP0.length}</div></div>
-        </div>
-        <div style={{marginBottom:16}}><button className="btn btn-primary" onClick={()=>{setEditAufgabe({owner} as Aufgabe);setShowAufgabeModal(true)}}>+ Aufgabe für {owner}</button></div>
-        <div className="card" style={{marginBottom:16}}>
-          <div className="card-header"><span className="card-title">Heute</span></div>
-          <AufgabenTable tasks={mineToday}/>
-        </div>
-        <div className="grid-2">
-          <div className="card">
-            <div className="card-header"><span className="card-title">Diese Woche</span></div>
-            <AufgabenTable tasks={mineWeek}/>
-          </div>
-          <div className="card">
-            <div className="card-header"><span className="card-title">Wartet auf extern</span></div>
-            <AufgabenTable tasks={mineWaiting}/>
-          </div>
-        </div>
-        {owner==='OP'&&(
-          <div className="card" style={{marginTop:16}}>
-            <div className="card-header"><span className="card-title">Supplier Follow-ups fällig</span></div>
-            {lieferanten.filter(l=>l.naechster_followup&&l.naechster_followup<=t).length===0
-              ?<div className="empty">Keine fällig</div>
-              :<div className="table-wrap"><table><thead><tr><th>Lieferant</th><th>Bewertung</th><th>Fällig</th><th>Notiz</th></tr></thead><tbody>
-                {lieferanten.filter(l=>l.naechster_followup&&l.naechster_followup<=t).map(l=><tr key={l.id}>
-                  <td style={{fontWeight:500}}>{l.name}</td>
-                  <td><span className={`badge ${l.bewertung==='A'?'badge-green':'badge-gray'}`}>{l.bewertung}</span></td>
-                  <td style={{color:'var(--red)'}}>{fmt(l.naechster_followup)}</td>
-                  <td style={{fontSize:12,color:'var(--mid)'}}>{l.notizen?.substring(0,60)||'–'}</td>
-                </tr>)}
-              </tbody></table></div>
-            }
-          </div>
-        )}
-        {owner==='DC'&&(
-          <div className="card" style={{marginTop:16}}>
-            <div className="card-header"><span className="card-title">Content in Produktion</span></div>
-            {content.filter(c=>c.owner===owner&&['Skript','In Produktion','Review'].includes(c.status)).length===0
-              ?<div className="empty">Nichts in Produktion</div>
-              :<div className="table-wrap"><table><thead><tr><th>Content</th><th>Format</th><th>Status</th><th>Datum</th></tr></thead><tbody>
-                {content.filter(c=>c.owner===owner&&['Skript','In Produktion','Review'].includes(c.status)).map(c=><tr key={c.id}>
-                  <td style={{fontWeight:500}}>{c.titel}</td><td style={{fontSize:12}}>{c.format}</td>
-                  <td><span className={`badge ${statusColor(c.status)}`}>{c.status}</span></td>
-                  <td style={{fontSize:12}}>{fmt(c.veroeffentlichungsdatum)}</td>
-                </tr>)}
-              </tbody></table></div>
-            }
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // ── Aufgaben View ─────────────────────────────────────────────────────────────
-  function AufgabenView() {
-    const [filter, setFilter] = useState<string>('alle')
-    const [prioFilter, setPrioFilter] = useState('')
-    const filtered = aufgaben.filter(a=>{
-      if(prioFilter&&a.prioritaet!==prioFilter) return false
-      if(filter==='heute') return a.status==='Heute'
-      if(filter==='woche') return a.status==='Diese Woche'||a.status==='Heute'
-      if(filter==='mine') return a.owner===currentOwner&&a.status!=='Erledigt'
-      if(filter==='p0') return a.prioritaet==='P0'&&a.status!=='Erledigt'
-      if(filter==='blockiert') return a.status==='Blockiert'
-      if(filter==='ueberfaellig') return isOverdue(a.deadline)&&a.status!=='Erledigt'
-      if(filter==='erledigt') return a.status==='Erledigt'
-      return a.status!=='Erledigt'&&a.status!=='Gestrichen'
-    })
-    return (
-      <div>
-        <div className="page-header"><h2>Aufgaben</h2><p>Alle Aufgaben · 5-Punkt-Regel gilt immer</p></div>
-        <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
-          <button className="btn btn-primary" onClick={()=>{setEditAufgabe(null);setShowAufgabeModal(true)}}>+ Neue Aufgabe</button>
-          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-            {[['alle','Alle'],['mine','Meine'],['heute','Heute'],['woche','Diese Woche'],['p0','P0'],['blockiert','Blockiert'],['ueberfaellig','Überfällig'],['erledigt','Erledigt']].map(([k,l])=>(
-              <button key={k} className={`btn btn-sm ${filter===k?'btn-primary':'btn-outline'}`} onClick={()=>setFilter(k)}>{l}</button>
-            ))}
-          </div>
-          <select value={prioFilter} onChange={e=>setPrioFilter(e.target.value)} style={{width:100,padding:'4px 8px'}}>
-            <option value="">Alle Prios</option>{PRIO.map(p=><option key={p}>{p}</option>)}
-          </select>
-        </div>
-        <div className="card">
-          <AufgabenTable tasks={filtered}/>
-          {filtered.length===0&&<div className="empty">Keine Aufgaben für diesen Filter</div>}
-        </div>
-      </div>
-    )
-  }
-
-  // ── Produkte View ─────────────────────────────────────────────────────────────
-  function ProdukteView() {
-    const [newP, setNewP] = useState({name:'',status:'Idee',lead:'AT',naechster_schritt:'',ziel_vk:0,ziel_ek:0,kategorie:'',offene_fragen:''})
-    const [saving, setSaving] = useState(false)
-    const save = async () => {
-      if(!newP.name) return
-      setSaving(true)
-      await supabase.from('produkte').insert(newP)
-      setNewP({name:'',status:'Idee',lead:'AT',naechster_schritt:'',ziel_vk:0,ziel_ek:0,kategorie:'',offene_fragen:''})
-      setSaving(false); load()
+  // Keyboard shortcuts
+  useEffect(()=>{
+    const h=(e:KeyboardEvent)=>{
+      const tag=(e.target as HTMLElement).tagName
+      if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return
+      if(e.key==='Escape'){ setModal(null); setFlyout(null); setDesignFlyout(null); setSidebarOpen(false) }
+      if(modal||flyout||designFlyout) return
+      if(e.key==='n'||e.key==='N'){ setEditA(null); setModal('aufgabe') }
+      if(e.key==='h'||e.key==='H') setView('heute')
+      if(e.key==='p'||e.key==='P') setView('plan')
+      if(e.key==='d'||e.key==='D') setView('design')
     }
-    const updateP = async (id: string, field: string, value: string|number) => { await supabase.from('produkte').update({[field]:value}).eq('id',id); load() }
-    const delP = async (id: string) => { if(confirm('Produkt löschen?')) { await supabase.from('produkte').delete().eq('id',id); load() } }
+    window.addEventListener('keydown',h)
+    return ()=>window.removeEventListener('keydown',h)
+  },[modal,flyout,designFlyout])
+
+  // ── CRUD ───────────────────────────────────────────────────────────────────
+  const toggleStatus=async(a:Aufgabe)=>{
+    const next=a.status==='Erledigt'?'Offen':'Erledigt'
+    const optimistic:Aufgabe={...a,status:next,completed_at:next==='Erledigt'?new Date().toISOString():null}
+    setAufgaben(prev=>prev.map(x=>x.id===a.id?optimistic:x))
+    setFlyout(prev=>prev?.id===a.id?optimistic:prev)
+    const {error}=await supabase.from('aufgaben').update({status:next,completed_at:next==='Erledigt'?new Date().toISOString():null}).eq('id',a.id)
+    if(error){ setAufgaben(prev=>prev.map(x=>x.id===a.id?a:x)); toast('Fehler','error') }
+    else await logActivity('aufgabe',a.id,a.titel,next==='Erledigt'?'erledigt':'wieder geöffnet',aktiv)
+  }
+
+  const toggleSubtask=async(sub:Aufgabe)=>{
+    const next=sub.status==='Erledigt'?'Offen':'Erledigt'
+    setAufgaben(prev=>prev.map(x=>x.id===sub.id?{...x,status:next}:x))
+    await supabase.from('aufgaben').update({status:next}).eq('id',sub.id)
+  }
+
+  const delAufgabe=(a:Aufgabe)=>confirm(`"${a.titel}" löschen?`,async()=>{
+    setAufgaben(prev=>prev.filter(x=>x.id!==a.id))
+    if(flyout?.id===a.id) setFlyout(null)
+    const {error}=await supabase.from('aufgaben').delete().eq('id',a.id)
+    if(error){ loadAll(); toast('Fehler','error') }
+    else{ await logActivity('aufgabe',a.id,a.titel,'gelöscht',aktiv); toast('Gelöscht') }
+  })
+
+  const delEntscheid=(e:Entscheidung)=>confirm('Entscheidung löschen?',async()=>{
+    setEntscheid(prev=>prev.filter(x=>x.id!==e.id))
+    await supabase.from('entscheidungen').delete().eq('id',e.id); toast('Gelöscht')
+  })
+
+  const delDatei=(d:Datei)=>confirm(`"${d.name}" löschen?`,async()=>{
+    setDateien(prev=>prev.filter(x=>x.id!==d.id))
+    await supabase.storage.from('dateien').remove([d.dateiname])
+    await supabase.from('dateien').delete().eq('id',d.id); toast('Gelöscht')
+  })
+
+  const delIdee=(i:DesignIdee)=>confirm('Idee löschen?',async()=>{
+    setIdeen(prev=>prev.filter(x=>x.id!==i.id))
+    if(designFlyout?.id===i.id) setDesignFlyout(null)
+    if(i.dateiname) await supabase.storage.from('design').remove([i.dateiname])
+    await supabase.from('design_ideen').delete().eq('id',i.id); toast('Gelöscht')
+  })
+
+  const updateFreigabe=async(idee:DesignIdee,status:string)=>{
+    const u={...idee,freigabe:status}
+    setIdeen(prev=>prev.map(i=>i.id===idee.id?u:i))
+    setDesignFlyout(prev=>prev?.id===idee.id?u:prev)
+    await supabase.from('design_ideen').update({freigabe:status}).eq('id',idee.id)
+    await logActivity('design',idee.id,idee.titel,`Freigabe: ${status}`,aktiv)
+    toast(status,status==='Freigegeben'?'success':'default')
+  }
+
+  const addFeedback=async(idee:DesignIdee,text:string)=>{
+    const entry:FeedbackEntry={person:aktiv,text,datum:new Date().toISOString()}
+    const updated=[...(idee.feedback_json||[]),entry]
+    const u={...idee,feedback_json:updated}
+    setIdeen(prev=>prev.map(i=>i.id===idee.id?u:i))
+    setDesignFlyout(prev=>prev?.id===idee.id?u:prev)
+    await supabase.from('design_ideen').update({feedback_json:updated}).eq('id',idee.id)
+    toast('Feedback gespeichert','success')
+  }
+
+  const handleUpload=async(file:File,bucket:string)=>{
+    setUploading(true)
+    const fname=`${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`
+    const {error}=await supabase.storage.from(bucket).upload(fname,file)
+    if(error){ toast('Upload fehlgeschlagen','error'); setUploading(false); return null }
+    const {data}=supabase.storage.from(bucket).getPublicUrl(fname)
+    setUploading(false); return {fname,url:data.publicUrl}
+  }
+
+  // Computed
+  const t=todayStr(); const h7=in7dStr()
+  const kritisch=aufgaben.filter(a=>(isOverdue(a.deadline,a.status)||isSoon(a.deadline,a.status))&&a.status!=='Erledigt')
+  const meineOffen=aufgaben.filter(a=>a.person===aktiv&&a.status!=='Erledigt').length
+  const offenGesamt=aufgaben.filter(a=>a.status!=='Erledigt').length
+  const ueberfaellig=aufgaben.filter(a=>isOverdue(a.deadline,a.status)).length
+  const meineFokus=aufgaben.filter(a=>a.person===aktiv&&a.status!=='Erledigt'&&!a.parent_id)
+    .sort((a,b)=>({Hoch:0,Normal:1,Niedrig:2}[a.prioritaet as 'Hoch'|'Normal'|'Niedrig']??1)-({Hoch:0,Normal:1,Niedrig:2}[b.prioritaet as 'Hoch'|'Normal'|'Niedrig']??1))
+    .slice(0,3)
+  const hauptaufgaben=aufgaben.filter(a=>a.ist_hauptaufgabe)
+  const phasen=[...new Set(hauptaufgaben.map(a=>a.phase))].sort()
+  const meineGesamt=aufgaben.filter(a=>a.person===aktiv).length
+  const meineDone=aufgaben.filter(a=>a.person===aktiv&&a.status==='Erledigt').length
+  const donePct=meineGesamt>0?Math.round(meineDone/meineGesamt*100):0
+  const naechste7=aufgaben.filter(a=>a.deadline&&a.deadline>=t&&a.deadline<=h7&&a.status!=='Erledigt').sort((a,b)=>(a.deadline||'').localeCompare(b.deadline||''))
+  const weekDays=Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()+i);return d.toISOString().split('T')[0]})
+  const gefiltert=aufgaben.filter(a=>{
+    if(fPerson!=='Alle'&&a.person!==fPerson) return false
+    if(fProjekt!=='Alle'&&a.projekt!==fProjekt) return false
+    if(fStatus!=='Alle'&&a.status!==fStatus) return false
+    return true
+  })
+  const gefilterteIdeen=ideen.filter(i=>{
+    if(fDKat!=='Alle'&&i.kategorie!==fDKat) return false
+    if(fDFG!=='Alle'&&i.freigabe!==fDFG) return false
+    return true
+  })
+
+  // Area status
+  const areaStats=PROJEKTE.map(proj=>{
+    const items=aufgaben.filter(a=>a.projekt===proj)
+    const offen=items.filter(a=>a.status!=='Erledigt').length
+    const krit=items.filter(a=>(isOverdue(a.deadline,a.status)||isSoon(a.deadline,a.status))&&a.status!=='Erledigt').length
+    const done=items.filter(a=>a.status==='Erledigt').length
+    const total=items.length
+    return {proj,offen,krit,done,total}
+  }).filter(a=>a.total>0).sort((a,b)=>b.krit-a.krit||b.offen-a.offen)
+
+  // ── AufgabeItem — cleaner typography ──────────────────────────────────────
+  function AItem({a,editable=false,compact=false}:{a:Aufgabe;editable?:boolean;compact?:boolean}) {
+    const ov=isOverdue(a.deadline,a.status)
+    const sn=isSoon(a.deadline,a.status)
+    const metaParts=[a.person,a.projekt,a.deadline?fmtDate(a.deadline):''].filter(Boolean)
     return (
-      <div>
-        <div className="page-header"><h2>Produkte</h2><p>Pipeline · jedes Produkt braucht Status + Lead + Nächster Schritt</p></div>
-        <div className="card" style={{marginBottom:16}}>
-          <div className="card-header"><span className="card-title">Neues Produkt</span></div>
-          <div className="form-row">
-            <div className="form-group"><label>Name</label><input placeholder="z.B. Modular Cap" value={newP.name} onChange={e=>setNewP(p=>({...p,name:e.target.value}))}/></div>
-            <div className="form-group"><label>Status</label><select value={newP.status} onChange={e=>setNewP(p=>({...p,status:e.target.value}))}>{STATUS_PRODUKT.map(s=><option key={s}>{s}</option>)}</select></div>
+      <div className={`aufgabe${a.status==='Erledigt'?' done':''}${ov?' critical':''}`}>
+        <button className={`check-btn${a.status==='Erledigt'?' done':a.status==='In Arbeit'?' inarbeit':''}`}
+          onClick={()=>toggleStatus(a)} title={a.status==='Erledigt'?'Wieder öffnen':'Erledigt'}>
+          {a.status==='Erledigt'&&Ico.check}
+          {/* FIX: correct class name, no dot in className */}
+          {a.status==='In Arbeit'&&<div className="check-btn-inarbeit-dot"/>}
+        </button>
+        <div className="a-body">
+          {a.nummer&&<div className="a-num">{String(a.nummer).padStart(2,'0')}</div>}
+          <div className={`a-titel${ov?' overdue':''}`} onClick={()=>setFlyout(a)}>{a.titel}</div>
+          {/* Cleaner: single meta line instead of multiple tags */}
+          <div className="a-meta-line">
+            {ov&&<span style={{color:'var(--red)',fontWeight:700}}>Überfällig</span>}
+            {!ov&&sn&&<span style={{color:'var(--amber)',fontWeight:700}}>Bald fällig</span>}
+            {(ov||sn)&&<span className="a-meta-dot"/>}
+            {metaParts.map((p,i)=>(
+              <span key={i}>
+                {i>0&&<span className="a-meta-dot"/>}
+                <span style={i===0?{color:PERSON_HEX[p]||'var(--mid)',fontWeight:600}:{}}>{p}</span>
+              </span>
+            ))}
+            {a.prioritaet==='Hoch'&&<><span className="a-meta-dot"/><span style={{color:'var(--red)',fontWeight:600}}>Hoch</span></>}
           </div>
-          <div className="form-row">
-            <div className="form-group"><label>Lead</label><select value={newP.lead} onChange={e=>setNewP(p=>({...p,lead:e.target.value}))}>{OWNERS.map(o=><option key={o}>{o}</option>)}</select></div>
-            <div className="form-group"><label>Kategorie</label><input placeholder="Cap / Patch / Bag..." value={newP.kategorie} onChange={e=>setNewP(p=>({...p,kategorie:e.target.value}))}/></div>
-          </div>
-          <div className="form-row">
-            <div className="form-group"><label>Ziel VK €</label><input type="number" value={newP.ziel_vk} onChange={e=>setNewP(p=>({...p,ziel_vk:+e.target.value}))}/></div>
-            <div className="form-group"><label>Ziel EK €</label><input type="number" value={newP.ziel_ek} onChange={e=>setNewP(p=>({...p,ziel_ek:+e.target.value}))}/></div>
-          </div>
-          <div className="form-group"><label>Nächster Schritt (Pflicht)</label><input placeholder="z.B. Cap Tech Pack finalisieren bis 20.6." value={newP.naechster_schritt} onChange={e=>setNewP(p=>({...p,naechster_schritt:e.target.value}))}/></div>
-          <button className="btn btn-primary" onClick={save} disabled={saving}>{saving?'…':'Produkt anlegen'}</button>
+          {a.blocker&&<div className="a-blocker">Blocker: {a.blocker}</div>}
         </div>
-        <div className="card">
-          <div className="card-header"><span className="card-title">Kanban Pipeline</span></div>
-          <div className="kanban">
-            {STATUS_PRODUKT.map(s=>(
-              <div className="kanban-col" key={s}>
-                <div className="kanban-col-header">{s}</div>
-                <div className="kanban-col-body">
-                  {produkte.filter(p=>p.status===s).map(p=>(
-                    <div className="kanban-card" key={p.id}>
-                      <div className="kanban-card-title">{p.name}</div>
-                      <div className="kanban-card-meta">
-                        <span className={`owner-chip ${ownerChip(p.lead)}`}>{p.lead}</span>
-                        {!p.naechster_schritt&&<span style={{fontSize:10,color:'var(--red)'}}>⚠ kein Schritt</span>}
-                      </div>
-                      {p.ziel_vk>0&&<div style={{fontSize:11,color:'var(--mid)',marginTop:4}}>VK {p.ziel_vk}€ · EK {p.ziel_ek}€ · {p.ziel_vk>0?Math.round((p.ziel_vk-p.ziel_ek)/p.ziel_vk*100):0}%</div>}
-                      {p.naechster_schritt&&<div style={{fontSize:11,color:'var(--slate)',marginTop:4,borderTop:'1px solid var(--border)',paddingTop:4}}>→ {p.naechster_schritt.substring(0,60)}</div>}
-                      <div style={{display:'flex',gap:4,marginTop:6}}>
-                        <select value={p.status} onChange={e=>updateP(p.id,'status',e.target.value)} style={{flex:1,padding:'2px 4px',fontSize:11}}>
-                          {STATUS_PRODUKT.map(s=><option key={s}>{s}</option>)}
-                        </select>
-                        <button className="btn btn-danger btn-sm" style={{padding:'2px 6px'}} onClick={()=>delP(p.id)}>×</button>
-                      </div>
+        {editable&&(
+          <div className="a-actions">
+            <button className="icon-btn" onClick={()=>{setEditA(a);setModal('aufgabe')}}>{Ico.edit}</button>
+            <button className="icon-btn del" onClick={()=>delAufgabe(a)}>{Ico.trash}</button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  function SkeletonList({rows=4}:{rows?:number}) {
+    return <>{Array.from({length:rows}).map((_,i)=>(
+      <div key={i} className="skeleton-card"><div className="skeleton skeleton-title"/><div className="skeleton skeleton-meta"/></div>
+    ))}</>
+  }
+
+  // ── Task Flyout with subtasks ──────────────────────────────────────────────
+  function TaskFlyout() {
+    const a=flyout!
+    const subtasks=aufgaben.filter(x=>x.parent_id===a.id)
+    const [comments,setComments]=useState<Comment[]>([])
+    const [newComment,setNewComment]=useState('')
+    const [newSubtask,setNewSubtask]=useState('')
+    const [loadingCom,setLoadingCom]=useState(true)
+    const [addingSub,setAddingSub]=useState(false)
+
+    useEffect(()=>{
+      supabase.from('aufgabe_comments').select('*').eq('aufgabe_id',a.id).order('created_at').then(({data})=>{
+        if(data) setComments(data); setLoadingCom(false)
+      })
+    },[a.id])
+
+    const addComment=async()=>{
+      if(!newComment.trim()) return
+      const payload={aufgabe_id:a.id,person:aktiv,kommentar:newComment.trim()}
+      setComments(prev=>[...prev,{...payload,id:'tmp-'+Date.now(),created_at:new Date().toISOString()}])
+      setNewComment('')
+      await supabase.from('aufgabe_comments').insert(payload)
+    }
+
+    const addSubtask=async()=>{
+      if(!newSubtask.trim()||addingSub) return
+      setAddingSub(true)
+      await supabase.from('aufgaben').insert({
+        titel:newSubtask.trim(),person:aktiv,projekt:a.projekt,
+        prioritaet:'Normal',status:'Offen',parent_id:a.id,
+        ergebnis:'',beschreibung:'',phase:'',sortierung:0,ist_hauptaufgabe:false,
+        deadline:null,blocker:''
+      })
+      setNewSubtask(''); setAddingSub(false)
+    }
+
+    const changeStatus=async(status:string)=>{
+      const upd:Record<string,unknown>={status}
+      if(status==='Erledigt') upd.completed_at=new Date().toISOString()
+      else upd.completed_at=null
+      setFlyout(prev=>prev?{...prev,status}:null)
+      setAufgaben(prev=>prev.map(x=>x.id===a.id?{...x,status}:x))
+      await supabase.from('aufgaben').update(upd).eq('id',a.id)
+    }
+
+    const doneSubs=subtasks.filter(s=>s.status==='Erledigt').length
+
+    return (
+      <>
+        <div className="flyout-overlay" onClick={()=>setFlyout(null)}/>
+        <div className="flyout">
+          <div className="flyout-header">
+            <div style={{flex:1,minWidth:0}}>
+              {a.nummer&&<div className="a-num" style={{marginBottom:'var(--sp1)'}}>AUFGABE {String(a.nummer).padStart(2,'0')}</div>}
+              <div style={{fontSize:'var(--text-lg)',fontWeight:700,color:'var(--ink)',lineHeight:1.4,marginBottom:'var(--sp2)'}}>{a.titel}</div>
+              <div className="a-meta-line">
+                <span style={{color:PERSON_HEX[a.person]||'var(--mid)',fontWeight:600}}>{a.person}</span>
+                <span className="a-meta-dot"/>
+                <span>{a.projekt}</span>
+                {a.deadline&&<><span className="a-meta-dot"/><span style={{color:isOverdue(a.deadline,a.status)?'var(--red)':isSoon(a.deadline,a.status)?'var(--amber)':'var(--mid)'}}>bis {fmtDate(a.deadline)}</span></>}
+                {a.prioritaet==='Hoch'&&<><span className="a-meta-dot"/><span style={{color:'var(--red)',fontWeight:600}}>Hoch</span></>}
+              </div>
+            </div>
+            <button className="icon-btn" onClick={()=>setFlyout(null)}>{Ico.x}</button>
+          </div>
+          <div className="flyout-body">
+            {a.beschreibung&&<div className="flyout-section"><div className="flyout-section-label">Beschreibung</div><div style={{fontSize:'var(--text-base)',color:'var(--slate)',lineHeight:1.6}}>{a.beschreibung}</div></div>}
+            <div className="flyout-section">
+              <div className="flyout-section-label">Gewünschtes Ergebnis</div>
+              <div className="flyout-result">{a.ergebnis||'–'}</div>
+            </div>
+            {a.blocker&&<div className="flyout-section"><div className="flyout-section-label" style={{color:'var(--red)'}}>Blocker</div><div className="flyout-blocker">{a.blocker}</div></div>}
+
+            {/* Subtasks — the key new feature */}
+            <div className="flyout-section">
+              <div className="flyout-section-label">
+                <span>Unteraufgaben</span>
+                {subtasks.length>0&&<span style={{color:'var(--mid)',fontWeight:400}}>{doneSubs}/{subtasks.length}</span>}
+              </div>
+              {subtasks.length>0&&(
+                <div className="card" style={{marginBottom:'var(--sp3)'}}>
+                  {subtasks.map(sub=>(
+                    <div key={sub.id} className="subtask">
+                      <button className={`subtask-check${sub.status==='Erledigt'?' done':''}`} onClick={()=>toggleSubtask(sub)}>
+                        {sub.status==='Erledigt'&&<span className="subtask-check-mark">✓</span>}
+                      </button>
+                      <span className={`subtask-title${sub.status==='Erledigt'?' done':''}`} onClick={()=>setFlyout(sub)}>{sub.titel}</span>
+                      <span style={{fontSize:'var(--text-xs)',color:PERSON_HEX[sub.person]||'var(--mid)',fontWeight:600,marginLeft:'auto'}}>{sub.person}</span>
+                      <button className="icon-btn del" style={{opacity:0.5,width:20,height:20}} onClick={()=>delAufgabe(sub)}>{Ico.trash}</button>
                     </div>
                   ))}
                 </div>
+              )}
+              <div style={{display:'flex',gap:'var(--sp2)'}}>
+                <input className="form-input" style={{fontSize:'var(--text-sm)'}} placeholder="+ Unteraufgabe hinzufügen..."
+                  value={newSubtask} onChange={e=>setNewSubtask(e.target.value)}
+                  onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();addSubtask()}}}/>
+                <button className="btn btn-secondary btn-sm" onClick={addSubtask} disabled={addingSub}>+</button>
               </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    )
-  }
+            </div>
 
-  // ── Lieferanten View ──────────────────────────────────────────────────────────
-  function LieferantenView() {
-    const [filter, setFilter] = useState('alle')
-    const filtered = lieferanten.filter(l=>{
-      if(filter==='a') return l.bewertung==='A'
-      if(filter==='followup') return l.naechster_followup&&l.naechster_followup<=t
-      if(filter==='aktiv') return l.status==='Aktiv'
-      return true
-    })
-    return (
-      <div>
-        <div className="page-header"><h2>Lieferanten</h2><p>Supplier Pipeline · A ohne Follow-up = sofortige Aktion</p></div>
-        <div style={{display:'flex',gap:8,marginBottom:16}}>
-          <button className="btn btn-primary" onClick={()=>setShowLieferantModal(true)}>+ Neuer Lieferant</button>
-          {[['alle','Alle'],['a','A-Supplier'],['followup','Follow-up fällig'],['aktiv','Aktiv']].map(([k,l])=>(
-            <button key={k} className={`btn btn-sm ${filter===k?'btn-primary':'btn-outline'}`} onClick={()=>setFilter(k)}>{l}</button>
-          ))}
-        </div>
-        <div className="card">
-          <div className="kanban">
-            {STATUS_LIEFERANT.map(s=>(
-              <div className="kanban-col" key={s}>
-                <div className="kanban-col-header">{s}</div>
-                <div className="kanban-col-body">
-                  {filtered.filter(l=>l.status===s).map(l=>(
-                    <div className="kanban-card" key={l.id}>
-                      <div className="kanban-card-title">{l.name}</div>
-                      <div className="kanban-card-meta">
-                        {l.bewertung&&<span className={`badge ${l.bewertung==='A'?'badge-green':l.bewertung==='D'?'badge-red':'badge-gray'}`}>{l.bewertung}</span>}
-                        {l.kategorie&&<span className="tag">{l.kategorie}</span>}
-                      </div>
-                      {l.ansprechpartner&&<div style={{fontSize:11,color:'var(--mid)',marginTop:4}}>{l.ansprechpartner}</div>}
-                      {l.naechster_followup&&<div style={{fontSize:11,color:l.naechster_followup<=t?'var(--red)':'var(--green)',marginTop:4}}>Follow-up: {fmt(l.naechster_followup)}</div>}
+            <div className="flyout-section">
+              <div className="flyout-section-label">Status</div>
+              <div style={{display:'flex',gap:'var(--sp2)',flexWrap:'wrap'}}>
+                {STATUSES.map(s=><button key={s} className={`btn btn-sm ${a.status===s?'btn-primary':'btn-secondary'}`} onClick={()=>changeStatus(s)}>{s}</button>)}
+              </div>
+            </div>
+
+            <div className="flyout-section">
+              <div className="flyout-section-label">Kommentare <span style={{color:'var(--muted)',fontWeight:400}}>{comments.length}</span></div>
+              {loadingCom?<div className="skeleton skeleton-line"/>:comments.length===0?<div style={{fontSize:'var(--text-sm)',color:'var(--muted)',padding:'var(--sp1) 0'}}>Noch keine Kommentare</div>:
+                comments.map(c=>(
+                  <div key={c.id} className="comment">
+                    <div className="comment-header">
+                      <span className="comment-person" style={{color:PERSON_HEX[c.person]||'var(--slate)'}}>{c.person}</span>
+                      <span className="comment-time">{new Date(c.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
                     </div>
-                  ))}
-                </div>
+                    <div className="comment-text">{c.kommentar}</div>
+                  </div>
+                ))
+              }
+              <div className="comment-form">
+                <input className="form-input" style={{fontSize:'var(--text-sm)'}} placeholder="Kommentar..." value={newComment}
+                  onChange={e=>setNewComment(e.target.value)}
+                  onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();addComment()}}}/>
+                <button className="btn btn-primary btn-sm" onClick={addComment}>Senden</button>
               </div>
-            ))}
+            </div>
+            <div className="flyout-actions">
+              <button className="btn btn-secondary btn-sm" onClick={()=>{setEditA(a);setModal('aufgabe');setFlyout(null)}}>Bearbeiten</button>
+              <button className="btn btn-danger btn-sm" onClick={()=>delAufgabe(a)}>Löschen</button>
+            </div>
           </div>
         </div>
-      </div>
+      </>
     )
   }
 
-  // ── Samples View ──────────────────────────────────────────────────────────────
-  function SamplesView() {
-    const updateSample = async (id: string, field: string, value: string|number|boolean|null) => { await supabase.from('samples').update({[field]:value}).eq('id',id); load() }
-    const delSample = async (id: string) => { if(confirm('Sample löschen?')) { await supabase.from('samples').delete().eq('id',id); load() } }
+  // ── Design Studio Flyout ───────────────────────────────────────────────────
+  function DesignStudioFlyout() {
+    const idee=designFlyout!
+    const [feedbackText,setFeedbackText]=useState('')
+    const fgColor=(s:string)=>s==='Freigegeben'?'var(--signal)':s==='Abgelehnt'?'var(--red)':s==='Überarbeiten'?'var(--amber)':'var(--muted)'
     return (
-      <div>
-        <div className="page-header"><h2>Samples</h2><p>Jedes Sample hat einen eigenen Review-Prozess</p></div>
-        <div style={{display:'flex',gap:8,marginBottom:16}}>
-          <button className="btn btn-primary" onClick={()=>setShowSampleModal(true)}>+ Neues Sample</button>
-          <button className="btn btn-signal" onClick={()=>{/* trigger review */}}>Sample Review starten</button>
-        </div>
-        <div className="card" style={{marginBottom:16}}>
-          <div className="card-header"><span className="card-title">Sample Pipeline</span></div>
-          <div className="kanban">
-            {STATUS_SAMPLE.map(s=>(
-              <div className="kanban-col" key={s}>
-                <div className="kanban-col-header">{s}</div>
-                <div className="kanban-col-body">
-                  {samples.filter(sa=>sa.status===s).map(sa=>(
-                    <div className="kanban-card" key={sa.id}>
-                      <div className="kanban-card-title">{sa.name}</div>
-                      <div className="kanban-card-meta">
-                        <span className="tag">v{sa.version}</span>
-                        {sa.score>0&&<span className={`badge ${sa.score>=8?'badge-green':sa.score>=5?'badge-amber':'badge-red'}`}>{sa.score}/10</span>}
-                      </div>
-                      {getPName(sa.produkt_id)!=='–'&&<div style={{fontSize:11,color:'var(--mid)',marginTop:4}}>{getPName(sa.produkt_id)}</div>}
-                      {getLName(sa.lieferant_id)!=='–'&&<div style={{fontSize:11,color:'var(--mid)'}}>{getLName(sa.lieferant_id)}</div>}
-                      {sa.erwartet_am&&<div style={{fontSize:11,color:'var(--mid)',marginTop:2}}>Erwartet: {fmt(sa.erwartet_am)}</div>}
-                    </div>
-                  ))}
-                </div>
+      <>
+        <div className="flyout-overlay" onClick={()=>setDesignFlyout(null)}/>
+        <div className="design-flyout">
+          <div className="flyout-header">
+            <div style={{flex:1,minWidth:0}}>
+              {idee.freigabe==='Überarbeiten'&&<div className="badge-overarbeiten" style={{marginBottom:'var(--sp2)'}}>Überarbeiten erforderlich</div>}
+              <div style={{fontSize:'var(--text-lg)',fontWeight:700,color:'var(--ink)',marginBottom:'var(--sp1)'}}>{idee.titel}</div>
+              <div className="a-meta-line">
+                <span>{idee.kategorie}</span><span className="a-meta-dot"/>
+                <span style={{color:PERSON_HEX[idee.von]||'var(--mid)',fontWeight:600}}>{idee.von}</span><span className="a-meta-dot"/>
+                <span style={{color:fgColor(idee.freigabe),fontWeight:700}}>{idee.freigabe}</span>
               </div>
-            ))}
+            </div>
+            <button className="icon-btn" onClick={()=>setDesignFlyout(null)}>{Ico.x}</button>
           </div>
-        </div>
-        <div className="card">
-          <div className="card-header"><span className="card-title">Review Room — Alle Samples in Prüfung</span></div>
-          {samplesReview.length===0?<div className="empty">Keine Samples in Review</div>:
-          <div className="table-wrap"><table>
-            <thead><tr><th>Sample</th><th>Produkt</th><th>Version</th><th>Status</th><th>Score</th><th>Was gut</th><th>Was fehlt</th><th>Entscheidung</th><th>Freigabe</th></tr></thead>
-            <tbody>{samplesReview.map(s=>(
-              <tr key={s.id}>
-                <td style={{fontWeight:500}}>{s.name}</td>
-                <td style={{fontSize:12}}>{getPName(s.produkt_id)}</td>
-                <td><span className="badge badge-gray">v{s.version}</span></td>
-                <td><select value={s.status} onChange={e=>updateSample(s.id,'status',e.target.value)} style={{width:130,padding:'3px 6px',fontSize:12}}>{STATUS_SAMPLE.map(st=><option key={st}>{st}</option>)}</select></td>
-                <td><input type="number" min={0} max={10} value={s.score||''} onChange={e=>updateSample(s.id,'score',+e.target.value)} style={{width:60}}/></td>
-                <td><textarea value={s.review_gut||''} onChange={e=>updateSample(s.id,'review_gut',e.target.value)} style={{width:140,minHeight:50,fontSize:11}} placeholder="Was ist gut?"/></td>
-                <td><textarea value={s.review_fehlt||''} onChange={e=>updateSample(s.id,'review_fehlt',e.target.value)} style={{width:140,minHeight:50,fontSize:11}} placeholder="Was fehlt?"/></td>
-                <td><textarea value={s.entscheidung||''} onChange={e=>updateSample(s.id,'entscheidung',e.target.value)} style={{width:140,minHeight:50,fontSize:11}} placeholder="Freigabe / Nochmal / Abgelehnt"/></td>
-                <td><input type="checkbox" checked={s.freigabe||false} onChange={e=>updateSample(s.id,'freigabe',e.target.checked)}/></td>
-              </tr>
-            ))}</tbody>
-          </table></div>}
-        </div>
-      </div>
-    )
-  }
-
-  // ── Content View ──────────────────────────────────────────────────────────────
-  function ContentView() {
-    const delContent = async (id: string) => { if(confirm('Content löschen?')) { await supabase.from('content').delete().eq('id',id); load() } }
-    const updateContent = async (id: string, field: string, value: string) => { await supabase.from('content').update({[field]:value}).eq('id',id); load() }
-    return (
-      <div>
-        <div className="page-header"><h2>Content</h2><p>Content-Kalender · Ideen · Launch-Kommunikation</p></div>
-        <button className="btn btn-primary" style={{marginBottom:16}} onClick={()=>setShowContentModal(true)}>+ Neue Content-Idee</button>
-        <div className="card">
-          <div className="card-header"><span className="card-title">Content Pipeline</span></div>
-          <div className="kanban">
-            {STATUS_CONTENT.map(s=>(
-              <div className="kanban-col" key={s}>
-                <div className="kanban-col-header">{s}</div>
-                <div className="kanban-col-body">
-                  {content.filter(c=>c.status===s).map(c=>(
-                    <div className="kanban-card" key={c.id}>
-                      <div className="kanban-card-title">{c.titel}</div>
-                      <div className="kanban-card-meta">
-                        {c.format&&<span className="tag">{c.format}</span>}
-                        {c.plattform&&<span className="tag">{c.plattform}</span>}
-                        {c.owner&&<span className={`owner-chip ${ownerChip(c.owner)}`}>{c.owner}</span>}
-                      </div>
-                      {c.veroeffentlichungsdatum&&<div style={{fontSize:11,color:'var(--mid)',marginTop:4}}>📅 {fmt(c.veroeffentlichungsdatum)}</div>}
-                      <div style={{marginTop:4}}>
-                        <select value={c.status} onChange={e=>updateContent(c.id,'status',e.target.value)} style={{width:'100%',padding:'2px 4px',fontSize:11}}>
-                          {STATUS_CONTENT.map(st=><option key={st}>{st}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+          {/* Large preview */}
+          <div className="design-flyout-img">
+            {idee.url&&idee.url.startsWith('https://')
+              ?<img src={idee.url} alt={idee.titel}/>
+              :<div className="design-flyout-img-placeholder">{idee.kategorie}</div>}
+          </div>
+          <div className="design-flyout-body">
+            {idee.beschreibung&&(
+              <div className="flyout-section"><div className="flyout-section-label">Konzept</div>
+                <div style={{fontSize:'var(--text-base)',color:'var(--slate)',lineHeight:1.6}}>{idee.beschreibung}</div>
               </div>
-            ))}
+            )}
+            {/* Quick approval actions */}
+            <div className="flyout-section">
+              <div className="flyout-section-label">Freigabe</div>
+              <div style={{display:'flex',gap:'var(--sp2)',flexWrap:'wrap'}}>
+                <button className="btn btn-signal btn-sm" onClick={()=>updateFreigabe(idee,'Freigegeben')}>Freigeben</button>
+                <button className="btn btn-amber btn-sm" onClick={()=>updateFreigabe(idee,'Überarbeiten')}>Überarbeiten</button>
+                <button className="btn btn-danger btn-sm" onClick={()=>updateFreigabe(idee,'Abgelehnt')}>Ablehnen</button>
+              </div>
+            </div>
+            {/* Full feedback history */}
+            <div className="flyout-section">
+              <div className="flyout-section-label">Feedback-Verlauf <span style={{color:'var(--muted)',fontWeight:400}}>{(idee.feedback_json||[]).length}</span></div>
+              {(idee.feedback_json||[]).length===0
+                ?<div style={{fontSize:'var(--text-sm)',color:'var(--muted)'}}>Noch kein Feedback</div>
+                :(idee.feedback_json||[]).map((fb,i)=>(
+                  <div key={i} className="design-fb-item">
+                    <div className="design-fb-meta">{fb.person} · {new Date(fb.datum).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
+                    {fb.text}
+                  </div>
+                ))}
+              <div className="design-fb-input" style={{marginTop:'var(--sp3)'}}>
+                <input className="form-input" style={{fontSize:'var(--text-sm)'}} placeholder="Feedback hinzufügen..." value={feedbackText}
+                  onChange={e=>setFeedbackText(e.target.value)}
+                  onKeyDown={e=>{if(e.key==='Enter'&&feedbackText.trim()){addFeedback(idee,feedbackText);setFeedbackText('')}}}/>
+                <button className="btn btn-secondary btn-sm" onClick={()=>{if(feedbackText.trim()){addFeedback(idee,feedbackText);setFeedbackText('')}}}>+</button>
+              </div>
+            </div>
+            <div className="flyout-actions">
+              <button className="btn btn-secondary btn-sm" onClick={()=>{setEditD(idee);setModal('design');setDesignFlyout(null)}}>Bearbeiten</button>
+              <button className="btn btn-danger btn-sm" onClick={()=>delIdee(idee)}>Löschen</button>
+            </div>
           </div>
         </div>
-      </div>
+      </>
     )
   }
 
-  // ── Finanzen View ─────────────────────────────────────────────────────────────
-  function FinanzenView() {
-    const total = finanzen.reduce((s,f)=>s+f.betrag_eur,0)
-    const bezahlt = finanzen.filter(f=>f.bezahlt).reduce((s,f)=>s+f.betrag_eur,0)
-    const offen = total-bezahlt
-    const byKat: Record<string,number> = {}
-    finanzen.forEach(f=>{ byKat[f.kategorie]=(byKat[f.kategorie]||0)+f.betrag_eur })
-    const delF = async (id: string) => { if(confirm('Löschen?')) { await supabase.from('finanzen').delete().eq('id',id); load() } }
-    const toggleBez = async (id: string, bez: boolean) => { await supabase.from('finanzen').update({bezahlt:!bez}).eq('id',id); load() }
+  // ── Modals ─────────────────────────────────────────────────────────────────
+  function AufgabeModal() {
+    const isEdit=!!editA?.id
+    const [f,setF]=useState({titel:editA?.titel||'',beschreibung:editA?.beschreibung||'',person:editA?.person||aktiv,projekt:editA?.projekt||PROJEKTE[0],prioritaet:editA?.prioritaet||'Normal',status:editA?.status||'Offen',deadline:editA?.deadline||'',ergebnis:editA?.ergebnis||'',blocker:editA?.blocker||''})
+    const [errors,setErrors]=useState<Record<string,string>>({})
+    const [saving,setSaving]=useState(false)
+    const up=(k:string,v:string)=>{setF(p=>({...p,[k]:v}));setErrors(e=>({...e,[k]:''})) }
+    const validate=()=>{
+      const e:Record<string,string>={}
+      if(!f.titel.trim()) e.titel='Bitte Aufgabe eingeben'
+      if(!f.deadline) e.deadline='Deadline ist Pflichtfeld'
+      if(!f.ergebnis.trim()) e.ergebnis='Gewünschtes Ergebnis ist Pflichtfeld'
+      setErrors(e); return Object.keys(e).length===0
+    }
+    const save=async()=>{
+      if(!validate()) return; setSaving(true)
+      const data={...f,deadline:safeDate(f.deadline),beschreibung:f.beschreibung||'',blocker:f.blocker||''}
+      if(isEdit){
+        const {error}=await supabase.from('aufgaben').update(data).eq('id',editA!.id)
+        if(error){toast('Fehler: '+error.message,'error');setSaving(false);return}
+        await logActivity('aufgabe',editA!.id,f.titel,'aktualisiert',aktiv); toast('Aktualisiert','success')
+      } else {
+        const {data:ins,error}=await supabase.from('aufgaben').insert(data).select().single()
+        if(error){toast('Fehler: '+error.message,'error');setSaving(false);return}
+        if(ins) await logActivity('aufgabe',ins.id,f.titel,'erstellt',aktiv); toast('Erstellt','success')
+      }
+      setSaving(false);setModal(null);setEditA(null)
+    }
     return (
-      <div>
-        <div className="page-header"><h2>Finanzen</h2><p>Jede Ausgabe sofort eintragen · Beleg immer hochladen</p></div>
-        <div className="metrics">
-          <div className="metric"><div className="metric-label">Gesamt €</div><div className="metric-value">{total.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})}</div></div>
-          <div className="metric"><div className="metric-label">Bezahlt €</div><div className="metric-value green">{bezahlt.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})}</div></div>
-          <div className="metric"><div className="metric-label">Offen €</div><div className={`metric-value ${offen>0?'red':'green'}`}>{offen.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})}</div></div>
-          <div className="metric"><div className="metric-label">Positionen</div><div className="metric-value">{finanzen.length}</div></div>
-        </div>
-        <button className="btn btn-primary" style={{marginBottom:16}} onClick={()=>setShowFinanzModal(true)}>+ Ausgabe eintragen</button>
-        <div className="grid-2" style={{marginBottom:16}}>
-          <div className="card">
-            <div className="card-header"><span className="card-title">Nach Kategorie</span></div>
-            <table style={{width:'100%',fontSize:13,borderCollapse:'collapse'}}>
-              <thead><tr><th style={{textAlign:'left',padding:'6px 8px',fontSize:11,color:'var(--mid)',borderBottom:'1px solid var(--border)'}}>Kategorie</th><th style={{textAlign:'right',padding:'6px 8px',fontSize:11,color:'var(--mid)',borderBottom:'1px solid var(--border)'}}>€</th></tr></thead>
-              <tbody>{Object.entries(byKat).sort((a,b)=>b[1]-a[1]).map(([k,v])=><tr key={k}><td style={{padding:'6px 8px'}}>{k||'–'}</td><td style={{padding:'6px 8px',textAlign:'right',fontWeight:500}}>{v.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>)}</tbody>
-            </table>
+      <div className="overlay" onClick={e=>e.target===e.currentTarget&&setModal(null)}>
+        <div className="modal">
+          <div className="modal-header"><span className="modal-title">{isEdit?'Aufgabe bearbeiten':'Neue Aufgabe'}</span><button className="modal-close" onClick={()=>setModal(null)}>{Ico.x}</button></div>
+          <div className="modal-body">
+            <div className="form-group"><label className="form-label">Aufgabe *</label><input autoFocus required className={`form-input${errors.titel?' error':''}`} placeholder="Aktionsverb + konkretes Ziel" value={f.titel} onChange={e=>up('titel',e.target.value)}/>{errors.titel&&<div className="form-error">{errors.titel}</div>}</div>
+            <div className="form-group"><label className="form-label">Details</label><textarea className="form-input" placeholder="Kontext, Links, Hinweise..." value={f.beschreibung} onChange={e=>up('beschreibung',e.target.value)}/></div>
+            <div className="form-row">
+              <div className="form-group"><label className="form-label">Verantwortlich *</label><select required className="form-input" value={f.person} onChange={e=>up('person',e.target.value)}>{PERSONEN.map(p=><option key={p.name}>{p.name}</option>)}</select></div>
+              <div className="form-group"><label className="form-label">Priorität</label><select className="form-input" value={f.prioritaet} onChange={e=>up('prioritaet',e.target.value)}>{PRIOS.map(p=><option key={p}>{p}</option>)}</select></div>
+            </div>
+            <div className="form-row">
+              <div className="form-group"><label className="form-label">Bereich *</label><select required className="form-input" value={f.projekt} onChange={e=>up('projekt',e.target.value)}>{PROJEKTE.map(p=><option key={p}>{p}</option>)}</select></div>
+              <div className="form-group"><label className="form-label">Deadline *</label><input type="date" required min={todayStr()} className={`form-input${errors.deadline?' error':''}`} value={f.deadline} onChange={e=>up('deadline',e.target.value)}/>{errors.deadline&&<div className="form-error">{errors.deadline}</div>}</div>
+            </div>
+            <div className="form-group"><label className="form-label">Gewünschtes Ergebnis *</label><input required className={`form-input${errors.ergebnis?' error':''}`} placeholder="Wann ist es WIRKLICH erledigt?" value={f.ergebnis} onChange={e=>up('ergebnis',e.target.value)}/>{errors.ergebnis&&<div className="form-error">{errors.ergebnis}</div>}</div>
+            <div className="form-group"><label className="form-label">Blocker</label><input className="form-input" placeholder="Was blockiert?" value={f.blocker} onChange={e=>up('blocker',e.target.value)}/></div>
+            {isEdit&&<div className="form-group"><label className="form-label">Status</label><select className="form-input" value={f.status} onChange={e=>up('status',e.target.value)}>{STATUSES.map(s=><option key={s}>{s}</option>)}</select></div>}
+            <div className="form-actions"><button className="btn btn-secondary" onClick={()=>setModal(null)}>Abbrechen</button><button className="btn btn-primary" onClick={save} disabled={saving}>{saving?'Speichern…':'Aufgabe speichern'}</button></div>
           </div>
-          <div className="card">
-            <div className="card-header"><span className="card-title">Offene Zahlungen</span></div>
-            {finanzen.filter(f=>!f.bezahlt).length===0?<div className="empty">Alle bezahlt ✓</div>:
-            <div className="table-wrap"><table><thead><tr><th>Position</th><th>€</th><th>Fällig</th></tr></thead><tbody>
-              {finanzen.filter(f=>!f.bezahlt).map(f=><tr key={f.id}><td style={{fontWeight:500}}>{f.position}</td><td style={{color:'var(--red)',fontWeight:600}}>{f.betrag_eur.toFixed(2)}</td><td>{fmt(f.datum)}</td></tr>)}
-            </tbody></table></div>}
-          </div>
-        </div>
-        <div className="card">
-          <div className="card-header"><span className="card-title">Alle Ausgaben</span></div>
-          <div className="table-wrap"><table>
-            <thead><tr><th>Position</th><th>Kat.</th><th>Betrag €</th><th>Datum</th><th>Bezahlt</th><th>Produkt</th><th></th></tr></thead>
-            <tbody>{finanzen.map(f=><tr key={f.id}>
-              <td style={{fontWeight:500,fontSize:13}}>{f.position}</td>
-              <td><span className="tag">{f.kategorie}</span></td>
-              <td style={{fontWeight:600}}>{f.betrag_eur.toFixed(2)}</td>
-              <td>{fmt(f.datum)}</td>
-              <td><input type="checkbox" checked={f.bezahlt} onChange={()=>toggleBez(f.id,f.bezahlt)}/></td>
-              <td style={{fontSize:12,color:'var(--mid)'}}>{getPName(f.produkt_id)}</td>
-              <td><button className="btn btn-danger btn-sm" onClick={()=>delF(f.id)}>×</button></td>
-            </tr>)}</tbody>
-          </table></div>
         </div>
       </div>
     )
-  }
-
-  // ── Entscheidungen View ───────────────────────────────────────────────────────
-  function EntscheidungenView() {
-    const delE = async (id: string) => { if(confirm('Löschen?')) { await supabase.from('entscheidungen').delete().eq('id',id); load() } }
-    return (
-      <div>
-        <div className="page-header"><h2>Decision Log</h2><p>Jede Entscheidung wird dokumentiert — Datum · Was · Warum · Wer</p></div>
-        <button className="btn btn-primary" style={{marginBottom:16}} onClick={()=>setShowEntscheidungModal(true)}>+ Entscheidung dokumentieren</button>
-        <div className="card">
-          <div className="table-wrap"><table>
-            <thead><tr><th>Entscheidung</th><th>Von</th><th>Datum</th><th>Auswirkung</th><th>Status</th><th>Nächster Schritt</th><th></th></tr></thead>
-            <tbody>{entscheidungen.map(e=><tr key={e.id}>
-              <td>
-                <div style={{fontWeight:500,fontSize:13}}>{e.entscheidung}</div>
-                {e.warum&&<div style={{fontSize:11,color:'var(--mid)',marginTop:2}}>Warum: {e.warum}</div>}
-              </td>
-              <td><span className={`owner-chip ${ownerChip(e.entschieden_von)}`}>{e.entschieden_von}</span></td>
-              <td style={{fontSize:12}}>{fmt(e.datum)}</td>
-              <td><span className={`badge ${e.auswirkung==='Hoch'?'badge-red':e.auswirkung==='Mittel'?'badge-amber':'badge-gray'}`}>{e.auswirkung}</span></td>
-              <td><span className={`badge ${e.status==='Entschieden'?'badge-green':'badge-gray'}`}>{e.status}</span></td>
-              <td style={{fontSize:12}}>{e.naechster_schritt||'–'}</td>
-              <td><button className="btn btn-danger btn-sm" onClick={()=>delE(e.id)}>×</button></td>
-            </tr>)}</tbody>
-          </table></div>
-          {entscheidungen.length===0&&<div className="empty">Noch keine Entscheidungen — jede Entscheidung hier eintragen</div>}
-        </div>
-      </div>
-    )
-  }
-
-  // ── Simple modals for Lieferant / Sample / Content / Finanzen / Entscheidung ─
-  function LieferantModal() {
-    const [f,setF]=useState({name:'',kategorie:'',status:'Neu',bewertung:'',ansprechpartner:'',email:'',whatsapp:'',naechster_followup:'',notizen:'',moq:0,ek_preis:0,sample_kosten_usd:0,lt_sample_tage:0,lt_bulk_tage:0})
-    const save=async()=>{if(!f.name)return;await supabase.from('lieferanten').insert(f);load();setShowLieferantModal(false)}
-    return <Modal title="Neuer Lieferant" onClose={()=>setShowLieferantModal(false)}>
-      <div className="form-row"><div className="form-group"><label>Name*</label><input value={f.name} onChange={e=>setF(p=>({...p,name:e.target.value}))}/></div><div className="form-group"><label>Kategorie</label><input placeholder="Cap Factory / Patch..." value={f.kategorie} onChange={e=>setF(p=>({...p,kategorie:e.target.value}))}/></div></div>
-      <div className="form-row"><div className="form-group"><label>Status</label><select value={f.status} onChange={e=>setF(p=>({...p,status:e.target.value}))}>{STATUS_LIEFERANT.map(s=><option key={s}>{s}</option>)}</select></div><div className="form-group"><label>Bewertung</label><select value={f.bewertung} onChange={e=>setF(p=>({...p,bewertung:e.target.value}))}><option value="">–</option>{BEWERTUNG.map(b=><option key={b}>{b}</option>)}</select></div></div>
-      <div className="form-row"><div className="form-group"><label>Ansprechpartner</label><input value={f.ansprechpartner} onChange={e=>setF(p=>({...p,ansprechpartner:e.target.value}))}/></div><div className="form-group"><label>WhatsApp</label><input value={f.whatsapp} onChange={e=>setF(p=>({...p,whatsapp:e.target.value}))}/></div></div>
-      <div className="form-row"><div className="form-group"><label>Nächster Follow-up</label><input type="date" value={f.naechster_followup} onChange={e=>setF(p=>({...p,naechster_followup:e.target.value}))}/></div><div className="form-group"><label>MOQ</label><input type="number" value={f.moq} onChange={e=>setF(p=>({...p,moq:+e.target.value}))}/></div></div>
-      <div className="form-row"><div className="form-group"><label>Sample-Kosten USD</label><input type="number" value={f.sample_kosten_usd} onChange={e=>setF(p=>({...p,sample_kosten_usd:+e.target.value}))}/></div><div className="form-group"><label>EK-Preis USD</label><input type="number" value={f.ek_preis} onChange={e=>setF(p=>({...p,ek_preis:+e.target.value}))}/></div></div>
-      <div className="form-group"><label>Notizen</label><textarea value={f.notizen} onChange={e=>setF(p=>({...p,notizen:e.target.value}))}/></div>
-      <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}><button className="btn btn-outline" onClick={()=>setShowLieferantModal(false)}>Abbrechen</button><button className="btn btn-primary" onClick={save}>Speichern</button></div>
-    </Modal>
-  }
-
-  function SampleModal() {
-    const [f,setF]=useState({name:'',status:'Angefragt',produkt_id:'' as string|null,lieferant_id:'' as string|null,version:1,angefragt_am:today(),erwartet_am:'',kosten_usd:0,tracking_nr:''})
-    const save=async()=>{if(!f.name)return;await supabase.from('samples').insert({...f,produkt_id:f.produkt_id||null,lieferant_id:f.lieferant_id||null});load();setShowSampleModal(false)}
-    return <Modal title="Neues Sample" onClose={()=>setShowSampleModal(false)}>
-      <div className="form-group"><label>Sample-Name* (Format: Produkt v1 · Lieferant)</label><input placeholder="z.B. Cap v1 · CNCAPS" value={f.name} onChange={e=>setF(p=>({...p,name:e.target.value}))}/></div>
-      <div className="form-row"><div className="form-group"><label>Produkt</label><select value={f.produkt_id||''} onChange={e=>setF(p=>({...p,produkt_id:e.target.value||null}))}><option value="">–</option>{produkte.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div><div className="form-group"><label>Lieferant</label><select value={f.lieferant_id||''} onChange={e=>setF(p=>({...p,lieferant_id:e.target.value||null}))}><option value="">–</option>{lieferanten.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></div></div>
-      <div className="form-row"><div className="form-group"><label>Version</label><input type="number" value={f.version} onChange={e=>setF(p=>({...p,version:+e.target.value}))}/></div><div className="form-group"><label>Status</label><select value={f.status} onChange={e=>setF(p=>({...p,status:e.target.value}))}>{STATUS_SAMPLE.map(s=><option key={s}>{s}</option>)}</select></div></div>
-      <div className="form-row"><div className="form-group"><label>Angefragt am</label><input type="date" value={f.angefragt_am} onChange={e=>setF(p=>({...p,angefragt_am:e.target.value}))}/></div><div className="form-group"><label>Erwartet am</label><input type="date" value={f.erwartet_am} onChange={e=>setF(p=>({...p,erwartet_am:e.target.value}))}/></div></div>
-      <div className="form-row"><div className="form-group"><label>Kosten USD</label><input type="number" value={f.kosten_usd} onChange={e=>setF(p=>({...p,kosten_usd:+e.target.value}))}/></div><div className="form-group"><label>Tracking-Nr</label><input value={f.tracking_nr} onChange={e=>setF(p=>({...p,tracking_nr:e.target.value}))}/></div></div>
-      <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}><button className="btn btn-outline" onClick={()=>setShowSampleModal(false)}>Abbrechen</button><button className="btn btn-primary" onClick={save}>Speichern</button></div>
-    </Modal>
-  }
-
-  function ContentModal() {
-    const [f,setF]=useState({titel:'',status:'Idee',format:'',plattform:'',owner:currentOwner,veroeffentlichungsdatum:'',produkt_id:'' as string|null,caption:'',visual_idee:''})
-    const save=async()=>{if(!f.titel)return;await supabase.from('content').insert({...f,produkt_id:f.produkt_id||null,veroeffentlichungsdatum:f.veroeffentlichungsdatum||null});load();setShowContentModal(false)}
-    return <Modal title="Neue Content-Idee" onClose={()=>setShowContentModal(false)}>
-      <div className="form-group"><label>Titel / Hook*</label><input placeholder="Die ersten 2 Sekunden. Schwach = wird nicht gedreht." value={f.titel} onChange={e=>setF(p=>({...p,titel:e.target.value}))}/></div>
-      <div className="form-row"><div className="form-group"><label>Format</label><input placeholder="Reel / TikTok / Story..." value={f.format} onChange={e=>setF(p=>({...p,format:e.target.value}))}/></div><div className="form-group"><label>Plattform</label><input placeholder="Instagram / TikTok..." value={f.plattform} onChange={e=>setF(p=>({...p,plattform:e.target.value}))}/></div></div>
-      <div className="form-row"><div className="form-group"><label>Owner</label><select value={f.owner} onChange={e=>setF(p=>({...p,owner:e.target.value}))}>{OWNERS.map(o=><option key={o}>{o}</option>)}</select></div><div className="form-group"><label>Veröffentlichungsdatum</label><input type="date" value={f.veroeffentlichungsdatum} onChange={e=>setF(p=>({...p,veroeffentlichungsdatum:e.target.value}))}/></div></div>
-      <div className="form-group"><label>Produkt</label><select value={f.produkt_id||''} onChange={e=>setF(p=>({...p,produkt_id:e.target.value||null}))}><option value="">–</option>{produkte.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-      <div className="form-group"><label>Visual-Idee</label><textarea placeholder="Was ist genau zu sehen?" value={f.visual_idee} onChange={e=>setF(p=>({...p,visual_idee:e.target.value}))}/></div>
-      <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}><button className="btn btn-outline" onClick={()=>setShowContentModal(false)}>Abbrechen</button><button className="btn btn-primary" onClick={save}>Speichern</button></div>
-    </Modal>
-  }
-
-  function FinanzModal() {
-    const [f,setF]=useState({position:'',kategorie:'',betrag_eur:0,waehrung:'EUR',bezahlt:false,datum:today(),produkt_id:'' as string|null,lieferant_id:'' as string|null,kommentar:''})
-    const save=async()=>{if(!f.position)return;await supabase.from('finanzen').insert({...f,produkt_id:f.produkt_id||null,lieferant_id:f.lieferant_id||null});load();setShowFinanzModal(false)}
-    return <Modal title="Ausgabe eintragen" onClose={()=>setShowFinanzModal(false)}>
-      <div className="form-group"><label>Position*</label><input placeholder="Was wurde bezahlt?" value={f.position} onChange={e=>setF(p=>({...p,position:e.target.value}))}/></div>
-      <div className="form-row"><div className="form-group"><label>Kategorie</label><select value={f.kategorie} onChange={e=>setF(p=>({...p,kategorie:e.target.value}))}><option value="">–</option>{KAT_FINANZEN.map(k=><option key={k}>{k}</option>)}</select></div><div className="form-group"><label>Betrag €</label><input type="number" step="0.01" value={f.betrag_eur} onChange={e=>setF(p=>({...p,betrag_eur:+e.target.value}))}/></div></div>
-      <div className="form-row"><div className="form-group"><label>Datum</label><input type="date" value={f.datum} onChange={e=>setF(p=>({...p,datum:e.target.value}))}/></div><div className="form-group"><label>Produkt</label><select value={f.produkt_id||''} onChange={e=>setF(p=>({...p,produkt_id:e.target.value||null}))}><option value="">–</option>{produkte.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div></div>
-      <div className="form-row"><div className="form-group"><label>Lieferant</label><select value={f.lieferant_id||''} onChange={e=>setF(p=>({...p,lieferant_id:e.target.value||null}))}><option value="">–</option>{lieferanten.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></div><div className="form-group" style={{display:'flex',alignItems:'center',gap:8,paddingTop:20}}><input type="checkbox" checked={f.bezahlt} onChange={e=>setF(p=>({...p,bezahlt:e.target.checked}))}/><label style={{margin:0}}>Bereits bezahlt</label></div></div>
-      <div className="form-group"><label>Kommentar</label><textarea value={f.kommentar} onChange={e=>setF(p=>({...p,kommentar:e.target.value}))}/></div>
-      <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}><button className="btn btn-outline" onClick={()=>setShowFinanzModal(false)}>Abbrechen</button><button className="btn btn-primary" onClick={save}>Speichern</button></div>
-    </Modal>
   }
 
   function EntscheidungModal() {
-    const [f,setF]=useState({entscheidung:'',warum:'',optionen:'',entschieden_von:currentOwner,datum:today(),auswirkung:'Mittel',status:'Entschieden',naechster_schritt:'',produkt_id:'' as string|null})
-    const save=async()=>{if(!f.entscheidung)return;await supabase.from('entscheidungen').insert({...f,produkt_id:f.produkt_id||null});load();setShowEntscheidungModal(false)}
-    return <Modal title="Entscheidung dokumentieren" onClose={()=>setShowEntscheidungModal(false)}>
-      <div className="form-group"><label>Entscheidung* — In einem Satz: Was wurde entschieden?</label><input placeholder="z.B. Snap-Abstand wird auf 55mm C-t-C festgelegt" value={f.entscheidung} onChange={e=>setF(p=>({...p,entscheidung:e.target.value}))}/></div>
-      <div className="form-group"><label>Warum — Was hat den Ausschlag gegeben?</label><textarea value={f.warum} onChange={e=>setF(p=>({...p,warum:e.target.value}))}/></div>
-      <div className="form-group"><label>Optionen geprüft</label><textarea placeholder="Welche Alternativen gab es?" value={f.optionen} onChange={e=>setF(p=>({...p,optionen:e.target.value}))}/></div>
-      <div className="form-row"><div className="form-group"><label>Entschieden von</label><select value={f.entschieden_von} onChange={e=>setF(p=>({...p,entschieden_von:e.target.value}))}>{OWNERS.map(o=><option key={o}>{o}</option>)}</select></div><div className="form-group"><label>Auswirkung</label><select value={f.auswirkung} onChange={e=>setF(p=>({...p,auswirkung:e.target.value}))}>{['Hoch','Mittel','Niedrig'].map(a=><option key={a}>{a}</option>)}</select></div></div>
-      <div className="form-row"><div className="form-group"><label>Datum</label><input type="date" value={f.datum} onChange={e=>setF(p=>({...p,datum:e.target.value}))}/></div><div className="form-group"><label>Produkt</label><select value={f.produkt_id||''} onChange={e=>setF(p=>({...p,produkt_id:e.target.value||null}))}><option value="">–</option>{produkte.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div></div>
-      <div className="form-group"><label>Nächster Schritt aus dieser Entscheidung</label><input placeholder="Was folgt? Als Aufgabe anlegen." value={f.naechster_schritt} onChange={e=>setF(p=>({...p,naechster_schritt:e.target.value}))}/></div>
-      <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}><button className="btn btn-outline" onClick={()=>setShowEntscheidungModal(false)}>Abbrechen</button><button className="btn btn-primary" onClick={save}>Speichern</button></div>
-    </Modal>
+    const [f,setF]=useState({titel:'',begruendung:'',person:aktiv,projekt:PROJEKTE[9],datum:todayStr(),naechster_schritt:''})
+    const [errors,setErrors]=useState<Record<string,string>>({})
+    const [saving,setSaving]=useState(false)
+    const save=async()=>{
+      if(!f.titel.trim()){setErrors({titel:'Pflichtfeld'});return}; setSaving(true)
+      const {error}=await supabase.from('entscheidungen').insert({...f,datum:safeDate(f.datum)||todayStr()})
+      if(error){toast('Fehler: '+error.message,'error');setSaving(false);return}
+      toast('Dokumentiert','success'); setSaving(false); setModal(null)
+    }
+    return (
+      <div className="overlay" onClick={e=>e.target===e.currentTarget&&setModal(null)}>
+        <div className="modal">
+          <div className="modal-header"><span className="modal-title">Entscheidung dokumentieren</span><button className="modal-close" onClick={()=>setModal(null)}>{Ico.x}</button></div>
+          <div className="modal-body">
+            <div className="form-group"><label className="form-label">Was wurde entschieden? *</label><input autoFocus className={`form-input${errors.titel?' error':''}`} placeholder="z.B. Snap-Abstand 55mm C-t-C festgelegt" value={f.titel} onChange={e=>setF(p=>({...p,titel:e.target.value}))}/>{errors.titel&&<div className="form-error">{errors.titel}</div>}</div>
+            <div className="form-group"><label className="form-label">Warum?</label><textarea className="form-input" value={f.begruendung} onChange={e=>setF(p=>({...p,begruendung:e.target.value}))}/></div>
+            <div className="form-row">
+              <div className="form-group"><label className="form-label">Von</label><select className="form-input" value={f.person} onChange={e=>setF(p=>({...p,person:e.target.value}))}>{PERSONEN.map(p=><option key={p.name}>{p.name}</option>)}</select></div>
+              <div className="form-group"><label className="form-label">Bereich</label><select className="form-input" value={f.projekt} onChange={e=>setF(p=>({...p,projekt:e.target.value}))}>{PROJEKTE.map(p=><option key={p}>{p}</option>)}</select></div>
+            </div>
+            <div className="form-row">
+              <div className="form-group"><label className="form-label">Datum</label><input type="date" className="form-input" value={f.datum} onChange={e=>setF(p=>({...p,datum:e.target.value}))}/></div>
+              <div className="form-group"><label className="form-label">Nächster Schritt</label><input className="form-input" value={f.naechster_schritt} onChange={e=>setF(p=>({...p,naechster_schritt:e.target.value}))}/></div>
+            </div>
+            <div className="form-actions"><button className="btn btn-secondary" onClick={()=>setModal(null)}>Abbrechen</button><button className="btn btn-primary" onClick={save} disabled={saving}>{saving?'…':'Speichern'}</button></div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────────
+  function DateiModal() {
+    const [name,setName]=useState(''); const [projekt,setProjekt]=useState(PROJEKTE[0])
+    const ref=useRef<HTMLInputElement>(null)
+    const upload=async(file:File)=>{
+      const res=await handleUpload(file,'dateien'); if(!res) return
+      if(!res.url.startsWith('https://')){toast('Ungültige URL','error');return}
+      const {error}=await supabase.from('dateien').insert({name:name||file.name,dateiname:res.fname,projekt,hochgeladen_von:aktiv,url:res.url,groesse:file.size})
+      if(error){toast('Fehler','error');return}
+      toast('Hochgeladen','success'); setModal(null)
+    }
+    return (
+      <div className="overlay" onClick={e=>e.target===e.currentTarget&&setModal(null)}>
+        <div className="modal">
+          <div className="modal-header"><span className="modal-title">Datei hochladen</span><button className="modal-close" onClick={()=>setModal(null)}>{Ico.x}</button></div>
+          <div className="modal-body">
+            <div className="form-row">
+              <div className="form-group"><label className="form-label">Name</label><input className="form-input" placeholder="z.B. Tech Pack Cap v2" value={name} onChange={e=>setName(e.target.value)}/></div>
+              <div className="form-group"><label className="form-label">Bereich</label><select className="form-input" value={projekt} onChange={e=>setProjekt(e.target.value)}>{PROJEKTE.map(p=><option key={p}>{p}</option>)}</select></div>
+            </div>
+            <div className="upload-zone" onClick={()=>ref.current?.click()}>
+              <div style={{width:28,height:28,margin:'0 auto var(--sp2)'}}>{Ico.file}</div>
+              <div className="upload-zone-title">{uploading?'Wird hochgeladen…':'Datei auswählen'}</div>
+              <div className="upload-zone-sub">PDF, Word, Excel, Bilder</div>
+              <input ref={ref} type="file" style={{display:'none'}} onChange={e=>{const f=e.target.files?.[0];if(f)upload(f)}}/>
+            </div>
+            <div className="form-actions"><button className="btn btn-secondary" onClick={()=>setModal(null)}>Schließen</button></div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  function DesignModal() {
+    const isEdit=!!editD?.id
+    const [f,setF]=useState({titel:editD?.titel||'',kategorie:editD?.kategorie||'Patch Idee',beschreibung:editD?.beschreibung||'',status:editD?.status||'Idee',von:editD?.von||aktiv,freigabe:editD?.freigabe||'Offen'})
+    const [file,setFile]=useState<File|null>(null)
+    const [errors,setErrors]=useState<Record<string,string>>({})
+    const [saving,setSaving]=useState(false)
+    const ref=useRef<HTMLInputElement>(null)
+    const save=async()=>{
+      if(!f.titel.trim()){setErrors({titel:'Pflichtfeld'});return}; setSaving(true)
+      let url=editD?.url||'',dateiname=editD?.dateiname||''
+      if(file){const res=await handleUpload(file,'design');if(res&&res.url.startsWith('https://')){url=res.url;dateiname=res.fname}}
+      const data={...f,url,dateiname,feedback_json:editD?.feedback_json||[]}
+      if(isEdit){await supabase.from('design_ideen').update(data).eq('id',editD!.id);toast('Aktualisiert','success')}
+      else{await supabase.from('design_ideen').insert(data);toast('Hinzugefügt','success')}
+      setSaving(false);setModal(null);setEditD(null)
+    }
+    return (
+      <div className="overlay" onClick={e=>e.target===e.currentTarget&&setModal(null)}>
+        <div className="modal">
+          <div className="modal-header"><span className="modal-title">{isEdit?'Idee bearbeiten':'Neue Design-Idee'}</span><button className="modal-close" onClick={()=>setModal(null)}>{Ico.x}</button></div>
+          <div className="modal-body">
+            <div className="form-group"><label className="form-label">Titel *</label><input autoFocus className={`form-input${errors.titel?' error':''}`} placeholder="z.B. SIGNAL Frame — Wellen-Motiv" value={f.titel} onChange={e=>setF(p=>({...p,titel:e.target.value}))}/>{errors.titel&&<div className="form-error">{errors.titel}</div>}</div>
+            <div className="form-row">
+              <div className="form-group"><label className="form-label">Kategorie</label><select className="form-input" value={f.kategorie} onChange={e=>setF(p=>({...p,kategorie:e.target.value}))}>{DESIGN_KATS.map(k=><option key={k}>{k}</option>)}</select></div>
+              <div className="form-group"><label className="form-label">Von</label><select className="form-input" value={f.von} onChange={e=>setF(p=>({...p,von:e.target.value}))}>{PERSONEN.map(p=><option key={p.name}>{p.name}</option>)}</select></div>
+            </div>
+            <div className="form-group"><label className="form-label">Beschreibung</label><textarea className="form-input" value={f.beschreibung} onChange={e=>setF(p=>({...p,beschreibung:e.target.value}))}/></div>
+            <div className="form-group">
+              <label className="form-label">Bild — 65:43 Seitenverhältnis empfohlen</label>
+              <div className="upload-zone" onClick={()=>ref.current?.click()}>
+                <div style={{width:24,height:24,margin:'0 auto var(--sp2)'}}>{Ico.img}</div>
+                <div className="upload-zone-title">{uploading?'Hochladen…':file?file.name:editD?.url?'Bild vorhanden':'Design-Datei wählen'}</div>
+                <div className="upload-zone-sub">JPG, PNG, PDF, AI</div>
+                <input ref={ref} type="file" accept="image/*,.pdf" style={{display:'none'}} onChange={e=>setFile(e.target.files?.[0]||null)}/>
+              </div>
+            </div>
+            {isEdit&&<div className="form-row">
+              <div className="form-group"><label className="form-label">Status</label><select className="form-input" value={f.status} onChange={e=>setF(p=>({...p,status:e.target.value}))}>{DESIGN_STATUS.map(s=><option key={s}>{s}</option>)}</select></div>
+              <div className="form-group"><label className="form-label">Freigabe</label><select className="form-input" value={f.freigabe} onChange={e=>setF(p=>({...p,freigabe:e.target.value}))}>{FREIGABE_STATUS.map(s=><option key={s}>{s}</option>)}</select></div>
+            </div>}
+            <div className="form-actions"><button className="btn btn-secondary" onClick={()=>setModal(null)}>Abbrechen</button><button className="btn btn-primary" onClick={save} disabled={saving}>{saving?'Speichern…':'Idee speichern'}</button></div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  function ConfirmModal() {
+    return (
+      <div className="overlay" onClick={e=>e.target===e.currentTarget&&setModal(null)}>
+        <div className="modal confirm-modal">
+          <div className="modal-header"><span className="modal-title">Bestätigung</span><button className="modal-close" onClick={()=>setModal(null)}>{Ico.x}</button></div>
+          <div className="modal-body">
+            <div className="confirm-text">{confirmCb?.msg}</div>
+            <div className="confirm-acts"><button className="btn btn-secondary" onClick={()=>setModal(null)}>Abbrechen</button><button className="btn btn-danger" onClick={()=>{confirmCb?.fn();setModal(null)}}>Löschen</button></div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── VIEWS ──────────────────────────────────────────────────────────────────
+  function HeuteView() {
+    const ap=PERSONEN.find(p=>p.name===aktiv)!
+    return (
+      <div>
+        <div className="cockpit-hero">
+          <div className="cockpit-role"><div className="cockpit-dot" style={{background:PERSON_HEX[aktiv]}}/>{ap.role}</div>
+          <div className="cockpit-name">{aktiv}</div>
+          <div className="cockpit-meta">
+            {new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}
+            {ueberfaellig>0&&<span className="cockpit-critical-tag">· {ueberfaellig} überfällig</span>}
+          </div>
+        </div>
+
+        {/* Launch Barometer */}
+        <div className="launch-bar">
+          <div className="launch-bar-header"><span className="launch-bar-lbl">Launch-Fortschritt</span><span className="launch-bar-score">{hauptaufgaben.filter(a=>a.status==='Erledigt').length} / {hauptaufgaben.length}</span></div>
+          <div className="launch-bar-phases">
+            {phasen.map(phase=>{
+              const items=hauptaufgaben.filter(a=>a.phase===phase)
+              const pct=items.length?Math.round(items.filter(a=>a.status==='Erledigt').length/items.length*100):0
+              return <div key={phase} className="launch-bar-phase" title={`${phase}: ${pct}%`}><div className="launch-bar-phase-fill" style={{width:`${pct}%`}}/></div>
+            })}
+          </div>
+          <div className="launch-bar-sublabels">{phasen.map(p=><div key={p} className="launch-bar-sublabel">{p.split('·')[1]?.trim()}</div>)}</div>
+        </div>
+
+        {/* Metrics */}
+        <div className="metrics-row">
+          <div className="metric"><div className="metric-num" style={{color:PERSON_HEX[aktiv]}}>{meineOffen}</div><div className="metric-lbl">Meine offenen</div><div className="metric-bar"><div className="metric-bar-fill" style={{width:`${donePct}%`,background:PERSON_HEX[aktiv]}}/></div></div>
+          <div className="metric"><div className="metric-num" style={{color:ueberfaellig>0?'var(--red)':'var(--signal)'}}>{ueberfaellig}</div><div className="metric-lbl">Überfällig</div></div>
+          <div className="metric"><div className="metric-num">{naechste7.length}</div><div className="metric-lbl">Nächste 7 Tage</div></div>
+          <div className="metric"><div className="metric-num c-signal">{donePct}%</div><div className="metric-lbl">Mein Fortschritt</div></div>
+        </div>
+
+        {/* 7-day timeline */}
+        {naechste7.length>0&&(
+          <div className="card" style={{marginBottom:'var(--sp4)'}}>
+            <div className="cockpit-section-lbl">Nächste 7 Tage</div>
+            <div className="week-timeline">
+              {weekDays.map(day=>{
+                const dayTasks=naechste7.filter(a=>a.deadline===day)
+                return (
+                  <div key={day} className={`week-day${day===t?' today':''}`}>
+                    <div className="week-day-label">{new Date(day+'T12:00').toLocaleDateString('de-DE',{weekday:'short'})}</div>
+                    <div className="week-day-date">{new Date(day+'T12:00').getDate()}</div>
+                    <div className="week-day-tasks">
+                      {dayTasks.map(a=>(
+                        <div key={a.id} className="week-day-task-dot" title={`${a.titel} · ${a.person}`}
+                          style={{background:PERSON_HEX[a.person]||'var(--slate)'}} onClick={()=>setFlyout(a)}>
+                          {a.person[0]}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Critical + Focus */}
+        <div className="cockpit-grid">
+          <div className="card">
+            {kritisch.length>0?<div className="cockpit-critical-lbl">Kritisch ({kritisch.length})</div>:<div className="cockpit-section-lbl">Kein kritischer Pfad</div>}
+            {loading?<SkeletonList rows={2}/>:kritisch.length===0?<div className="empty"><div className="empty-title c-signal">Alles im grünen Bereich</div></div>:kritisch.slice(0,5).map(a=><AItem key={a.id} a={a} editable/>)}
+          </div>
+          <div className="card">
+            <div className="cockpit-section-lbl">Mein Fokus — Top 3</div>
+            {loading?<SkeletonList rows={3}/>:meineFokus.length===0?<div className="empty"><div className="empty-title c-signal">Keine offenen Aufgaben</div></div>:meineFokus.map(a=><AItem key={a.id} a={a} editable/>)}
+          </div>
+        </div>
+
+        {/* Area status overview */}
+        {areaStats.length>0&&(
+          <>
+            <div style={{fontSize:'var(--text-md)',fontWeight:700,marginBottom:'var(--sp3)',color:'var(--ink)'}}>Bereichsstatus</div>
+            <div className="area-grid" style={{marginBottom:'var(--sp5)'}}>
+              {areaStats.map(a=>{
+                const pct=a.total>0?Math.round(a.done/a.total*100):0
+                return (
+                  <div key={a.proj} className="area-card" onClick={()=>{setFProjekt(a.proj);setView('aufgaben')}}>
+                    <div className="area-name" title={a.proj}>{a.proj}</div>
+                    <div className="area-stats">
+                      {a.offen} offen{a.krit>0&&<span style={{color:'var(--red)',marginLeft:'var(--sp2)',fontWeight:700}}>· {a.krit} kritisch</span>}
+                    </div>
+                    <div className="area-bar">
+                      <div className="area-bar-fill" style={{width:`${pct}%`,background:a.krit>0?'var(--red)':a.offen===0?'var(--signal)':'var(--slate)'}}/>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+
+        {/* Team */}
+        <div style={{fontSize:'var(--text-md)',fontWeight:700,marginBottom:'var(--sp3)',color:'var(--ink)'}}>Team</div>
+        <div className="team-grid" style={{marginBottom:'var(--sp5)'}}>
+          {PERSONEN.map(p=>{
+            const pA=aufgaben.filter(a=>a.person===p.name&&a.status!=='Erledigt'&&!a.parent_id)
+            const pDone=aufgaben.filter(a=>a.person===p.name&&a.status==='Erledigt').length
+            const pTotal=aufgaben.filter(a=>a.person===p.name).length
+            const pPct=pTotal>0?Math.round(pDone/pTotal*100):0
+            return (
+              <div className="team-card" key={p.name}>
+                <div className="team-card-head">
+                  <div><div className="team-card-name" style={{color:PERSON_HEX[p.name]}}>{p.name}</div><div className="team-card-role">{p.role}</div></div>
+                  <div className="team-card-stats"><div style={{fontWeight:700}}>{pPct}%</div><div>{pA.length} offen</div></div>
+                </div>
+                <div className="metric-bar" style={{margin:'0 var(--sp4) var(--sp1)',borderRadius:1}}>
+                  <div className="metric-bar-fill" style={{width:`${pPct}%`,background:PERSON_HEX[p.name]}}/>
+                </div>
+                {pA.slice(0,3).map(a=><div className="team-task" key={a.id}><div className="team-task-title">{a.titel}</div><div className="team-task-meta">{a.projekt}{a.deadline?` · bis ${fmtDate(a.deadline)}`:''}</div></div>)}
+                {pA.length===0&&<div style={{padding:'var(--sp3) var(--sp4)',fontSize:'var(--text-sm)',color:'var(--muted)'}}>Alles erledigt</div>}
+                {pA.length>3&&<div style={{padding:'var(--sp2) var(--sp4)',fontSize:'var(--text-xs)',color:'var(--muted)'}}>+ {pA.length-3} weitere</div>}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Activity Log */}
+        {activity.length>0&&(
+          <div className="card">
+            <div className="cockpit-section-lbl">Letzte Aktivität</div>
+            {activity.slice(0,8).map(a=>(
+              <div key={a.id} className="activity-item">
+                <div className="activity-dot" style={{background:PERSON_HEX[a.person]||'var(--muted)'}}/>
+                <div className="activity-text">
+                  <span style={{fontWeight:600,color:PERSON_HEX[a.person]||'var(--slate)'}}>{a.person}</span>{' '}hat <em>{a.entity_titel}</em> {a.action}
+                </div>
+                <div className="activity-time">{new Date(a.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  function PlanView() {
+    const gesamtDone=hauptaufgaben.filter(a=>a.status==='Erledigt').length
+    const gesamtPct=hauptaufgaben.length>0?Math.round(gesamtDone/hauptaufgaben.length*100):0
+    return (
+      <div>
+        <div className="page-head">
+          <div><div className="page-title">Launch Plan</div><div className="page-sub">20 Hauptaufgaben · {gesamtDone}/{hauptaufgaben.length} · Klick auf Aufgabe für Unteraufgaben · <kbd className="kbd">P</kbd></div></div>
+          <button className="btn btn-primary" onClick={()=>{setEditA(null);setModal('aufgabe')}}>{Ico.plus} Aufgabe</button>
+        </div>
+        <div className="metric-bar" style={{height:6,borderRadius:'var(--r-sm)',marginBottom:'var(--sp6)'}}>
+          <div className="metric-bar-fill" style={{width:`${gesamtPct}%`,background:'var(--signal)',height:6,borderRadius:'var(--r-sm)'}}/>
+        </div>
+        {loading?<>{Array.from({length:3}).map((_,i)=><div key={i} className="card" style={{padding:'var(--sp4)',marginBottom:'var(--sp4)'}}><SkeletonList rows={3}/></div>)}</>
+          :phasen.map(phase=>{
+            const items=hauptaufgaben.filter(a=>a.phase===phase).sort((a,b)=>a.sortierung-b.sortierung)
+            const done=items.filter(a=>a.status==='Erledigt').length
+            const pct=items.length>0?Math.round(done/items.length*100):0
+            return (
+              <div className="card phase-card" key={phase}>
+                <div className="phase-head"><div><div className="phase-name">{phase}</div><div className="phase-sub">{done} von {items.length} erledigt</div></div><div className="phase-pct">{pct}%</div></div>
+                <div className="phase-bar"><div className="phase-bar-f" style={{width:`${pct}%`}}/></div>
+                {items.map(a=>{
+                  const subs=aufgaben.filter(x=>x.parent_id===a.id)
+                  const subDone=subs.filter(s=>s.status==='Erledigt').length
+                  return (
+                    <div key={a.id}>
+                      <AItem a={a} editable/>
+                      {subs.length>0&&(
+                        <div style={{background:'var(--bg)',borderBottom:'1px solid var(--border)'}}>
+                          {subs.map(sub=>(
+                            <div key={sub.id} className="subtask">
+                              <button className={`subtask-check${sub.status==='Erledigt'?' done':''}`} onClick={()=>toggleSubtask(sub)}>
+                                {sub.status==='Erledigt'&&<span className="subtask-check-mark">✓</span>}
+                              </button>
+                              <span className={`subtask-title${sub.status==='Erledigt'?' done':''}`} onClick={()=>setFlyout(sub)}>{sub.titel}</span>
+                              <span style={{fontSize:'var(--text-xs)',color:PERSON_HEX[sub.person]||'var(--mid)',fontWeight:600}}>{sub.person}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
+      </div>
+    )
+  }
+
+  function AufgabenView() {
+    return (
+      <div>
+        <div className="page-head">
+          <div><div className="page-title">Aufgaben</div><div className="page-sub">{gefiltert.length} Aufgaben · <kbd className="kbd">N</kbd> neue Aufgabe</div></div>
+          <button className="btn btn-primary" onClick={()=>{setEditA(null);setModal('aufgabe')}}>{Ico.plus} Neue Aufgabe</button>
+        </div>
+        <div className="filter-row"><span className="filter-lbl">Person</span>{['Alle',...PERSONEN.map(p=>p.name)].map(p=><button key={p} className={`chip${fPerson===p?' on':''}`} onClick={()=>setFPerson(p)}>{p}</button>)}</div>
+        <div className="filter-row"><span className="filter-lbl">Bereich</span>{['Alle',...PROJEKTE].map(p=><button key={p} className={`chip${fProjekt===p?' on':''}`} onClick={()=>setFProjekt(p)}>{p}</button>)}</div>
+        <div className="filter-row" style={{marginBottom:'var(--sp5)'}}><span className="filter-lbl">Status</span>{['Alle',...STATUSES].map(s=><button key={s} className={`chip${fStatus===s?' on':''}`} onClick={()=>setFStatus(s)}>{s}</button>)}</div>
+        <div className="card">
+          {loading?<SkeletonList rows={6}/>:gefiltert.filter(a=>!a.parent_id||fStatus!=='Alle').length===0?<div className="empty"><div className="empty-icon">{Ico.empty}</div><div className="empty-title">Keine Aufgaben</div><div className="empty-sub">Filter anpassen oder neue Aufgabe anlegen</div></div>
+            :gefiltert.map(a=><AItem key={a.id} a={a} editable/>)}
+        </div>
+      </div>
+    )
+  }
+
+  function DesignView() {
+    const [feedbackText,setFeedbackText]=useState<Record<string,string>>({})
+    const fgColor=(s:string)=>s==='Freigegeben'?'var(--signal)':s==='Abgelehnt'?'var(--red)':s==='Überarbeiten'?'var(--amber)':'var(--muted)'
+    return (
+      <div>
+        <div className="page-head">
+          <div><div className="page-title">Design Studio</div><div className="page-sub">Patches · Frames · Hangtags · Verpackung · {ideen.length} Ideen · <kbd className="kbd">D</kbd></div></div>
+          <button className="btn btn-primary" onClick={()=>{setEditD(null);setModal('design')}}>{Ico.plus} Neue Idee</button>
+        </div>
+        <div className="filter-row"><span className="filter-lbl">Kategorie</span>{['Alle',...DESIGN_KATS].map(k=><button key={k} className={`chip${fDKat===k?' on':''}`} onClick={()=>setFDKat(k)}>{k}</button>)}</div>
+        <div className="filter-row" style={{marginBottom:'var(--sp5)'}}><span className="filter-lbl">Freigabe</span>{['Alle',...FREIGABE_STATUS].map(s=><button key={s} className={`chip${fDFG===s?' on':''}`} onClick={()=>setFDFG(s)}>{s}</button>)}</div>
+        {loading?<div className="design-grid">{Array.from({length:4}).map((_,i)=><div key={i} className="card"><div className="skeleton" style={{paddingTop:'var(--patch-ratio)',display:'block'}}/><div style={{padding:'var(--sp3)'}}><div className="skeleton skeleton-title"/><div className="skeleton skeleton-meta"/></div></div>)}</div>
+          :gefilterteIdeen.length===0?<div className="card"><div className="empty"><div className="empty-icon">{Ico.design}</div><div className="empty-title">Noch keine Ideen</div><div className="empty-sub">Norman lädt hier Patch-Ideen und Design-Entwürfe hoch</div></div></div>
+          :<div className="design-grid">
+            {gefilterteIdeen.map(idee=>(
+              <div className="design-card" key={idee.id} onClick={()=>setDesignFlyout(idee)}>
+                <div style={{padding:'var(--sp2) var(--sp2) 0'}}>
+                  <div className="patch-preview">
+                    {idee.url&&idee.url.startsWith('https://')?<img src={idee.url} alt={idee.titel} loading="lazy"/>:<div className="patch-preview-placeholder">{idee.kategorie}</div>}
+                  </div>
+                </div>
+                <div className="design-info">
+                  {idee.freigabe==='Überarbeiten'&&<div className="badge-overarbeiten">Überarbeiten</div>}
+                  <div className="design-title">{idee.titel}</div>
+                  <div className="design-meta">{idee.kategorie} · {idee.von}</div>
+                  <div style={{display:'flex',gap:'var(--sp1)',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp2)'}}>
+                    <span className="tag tag-neutral" style={{fontSize:'var(--text-xs)'}}>{idee.status}</span>
+                    <span style={{fontSize:'var(--text-sm)',fontWeight:700,color:fgColor(idee.freigabe)}}>{idee.freigabe}</span>
+                  </div>
+                  <div className="design-actions" onClick={e=>e.stopPropagation()}>
+                    <button className="btn btn-xs btn-signal" onClick={()=>updateFreigabe(idee,'Freigegeben')}>Freigabe</button>
+                    <button className="btn btn-xs btn-amber" onClick={()=>updateFreigabe(idee,'Überarbeiten')}>Revision</button>
+                  </div>
+                  {(idee.feedback_json||[]).length>0&&(
+                    <div className="design-fb-item" onClick={e=>e.stopPropagation()}>
+                      <div className="design-fb-meta">{idee.feedback_json[idee.feedback_json.length-1].person}</div>
+                      {idee.feedback_json[idee.feedback_json.length-1].text}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>}
+      </div>
+    )
+  }
+
+  function DateienView() {
+    const [fP,setFP]=useState('Alle')
+    const gef=dateien.filter(d=>fP==='Alle'||d.projekt===fP)
+    return (
+      <div>
+        <div className="page-head">
+          <div><div className="page-title">Dateien</div><div className="page-sub">Tech Packs · Angebote · Dokumente · {dateien.length} Dateien</div></div>
+          <button className="btn btn-primary" onClick={()=>setModal('datei')}>{Ico.plus} Hochladen</button>
+        </div>
+        <div className="filter-row" style={{marginBottom:'var(--sp5)'}}>{['Alle',...PROJEKTE].map(p=><button key={p} className={`chip${fP===p?' on':''}`} onClick={()=>setFP(p)}>{p}</button>)}</div>
+        <div className="card">
+          {loading?<SkeletonList rows={4}/>:gef.length===0?<div className="empty"><div className="empty-icon">{Ico.files}</div><div className="empty-title">Noch keine Dateien</div><div className="empty-sub">Tech Packs, Angebote, Bilder hochladen</div></div>
+            :gef.map(d=>(
+              <div className="file-row" key={d.id}>
+                <div className="file-icon">{d.dateiname.match(/\.(jpe?g|png|gif|webp)$/i)?Ico.img:Ico.file}</div>
+                <div className="file-info"><div className="file-name">{d.name}</div><div className="file-meta">{d.projekt} · {d.hochgeladen_von} · {fmtDate(d.created_at.split('T')[0])} · {Math.round(d.groesse/1024)}KB</div></div>
+                <div className="file-actions">
+                  <a href={d.url.startsWith('https://')?d.url:'#'} target="_blank" rel="noopener noreferrer" style={{textDecoration:'none'}}><button className="btn btn-secondary btn-sm">Download</button></a>
+                  <button className="icon-btn del" onClick={()=>delDatei(d)}>{Ico.trash}</button>
+                </div>
+              </div>
+            ))}
+        </div>
+      </div>
+    )
+  }
+
+  function EntscheidungenView() {
+    return (
+      <div>
+        <div className="page-head">
+          <div><div className="page-title">Entscheidungen</div><div className="page-sub">Was wurde entschieden — und warum · {entscheid.length} Einträge</div></div>
+          <button className="btn btn-primary" onClick={()=>setModal('entscheidung')}>{Ico.plus} Entscheidung</button>
+        </div>
+        <div className="card">
+          {loading?<SkeletonList rows={4}/>:entscheid.length===0?<div className="empty"><div className="empty-icon">{Ico.decide}</div><div className="empty-title">Noch keine Entscheidungen</div><div className="empty-sub">Jede wichtige Entscheidung hier festhalten</div></div>
+            :entscheid.map(e=>(
+              <div className="decision-row" key={e.id}>
+                <div className="decision-title">{e.titel}</div>
+                {e.begruendung&&<div className="decision-why">{e.begruendung}</div>}
+                {e.naechster_schritt&&<div className="decision-next">→ {e.naechster_schritt}</div>}
+                <div className="decision-meta">
+                  <span className="tag tag-proj">{e.projekt}</span>
+                  <span className="tag tag-person" style={{background:PERSON_HEX[e.person]||'var(--slate)'}}>{e.person}</span>
+                  <span style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>{fmtDate(e.datum)}</span>
+                  <button className="icon-btn del" style={{marginLeft:'auto'}} onClick={()=>delEntscheid(e)}>{Ico.trash}</button>
+                </div>
+              </div>
+            ))}
+        </div>
+      </div>
+    )
+  }
+
+  const navItems=[
+    {id:'heute' as const,icon:Ico.heute,label:'Heute',kbd:'H'},
+    {id:'plan' as const,icon:Ico.plan,label:'Launch Plan',kbd:'P'},
+    {id:'aufgaben' as const,icon:Ico.aufg,label:'Aufgaben',kbd:'N'},
+    {id:'design' as const,icon:Ico.design,label:'Design Studio',kbd:'D'},
+    {id:'dateien' as const,icon:Ico.files,label:'Dateien',kbd:''},
+    {id:'entscheidungen' as const,icon:Ico.decide,label:'Entscheidungen',kbd:''},
+  ]
+  const ap=PERSONEN.find(p=>p.name===aktiv)!
+
   return (
     <div className="app">
-      <aside className="sidebar">
-        <div className="sidebar-logo">
-          <h1>QUADRAS</h1>
-          <p>Founder OS · v3</p>
+      <aside className={`sidebar${sidebarOpen?' open':''}`}>
+        <div className="sidebar-logo"><div className="sidebar-logo-name">Quadras</div><div className="sidebar-logo-sub">Founder Operating System</div></div>
+        <div className="person-block">
+          <div className="person-label">Aktive Person</div>
+          <div className="person-btns">
+            {PERSONEN.map(p=>(
+              <button key={p.name} className={`pbtn${aktiv===p.name?' active':''}`}
+                style={aktiv===p.name?{background:PERSON_HEX[p.name],borderColor:PERSON_HEX[p.name]}:{}}
+                onClick={()=>{setAktiv(p.name);setSidebarOpen(false)}}>{p.name[0]}</button>
+            ))}
+          </div>
         </div>
-        <div className="sidebar-user">
-          <label style={{color:'rgba(255,255,255,0.4)',fontSize:11,marginBottom:4,display:'block'}}>Aktive Person</label>
-          <select value={currentOwner} onChange={e=>setCurrentOwner(e.target.value)}>
-            {OWNERS.map(o=><option key={o}>{o}</option>)}
-          </select>
-        </div>
-        <nav className="sidebar-nav">
-          <div className="nav-section">Cockpit</div>
-          {navItems.slice(0,1).map(n=><div key={n.id} className={`nav-item ${view===n.id?'active':''}`} onClick={()=>setView(n.id)}>{n.label}</div>)}
-          <div className="nav-section">Personal</div>
-          {navItems.slice(1,4).map(n=><div key={n.id} className={`nav-item ${view===n.id?'active':''}`} onClick={()=>setView(n.id)}>{n.label}</div>)}
-          <div className="nav-section">Daten</div>
-          {navItems.slice(4).map(n=><div key={n.id} className={`nav-item ${view===n.id?'active':''}`} onClick={()=>setView(n.id)}>{n.label}</div>)}
+        <nav className="nav">
+          <div className="nav-section">Navigation</div>
+          {navItems.map(n=>(
+            <button key={n.id} className={`nav-item${view===n.id?' active':''}`} onClick={()=>{setView(n.id);setSidebarOpen(false)}}>
+              <span className="nav-icon">{n.icon}</span>
+              {n.label}
+              {n.kbd&&<kbd className="kbd" style={{marginLeft:'auto',opacity:0.5}}>{n.kbd}</kbd>}
+            </button>
+          ))}
         </nav>
+        <div className="sidebar-stats">
+          <div className="stat"><div className="stat-num" style={{color:meineOffen>0?PERSON_HEX[aktiv]:'var(--ink)'}}>{meineOffen}</div><div className="stat-label">Meine</div></div>
+          <div className="stat"><div className="stat-num">{offenGesamt}</div><div className="stat-label">Team</div></div>
+          <div className="stat"><div className="stat-num" style={{color:ueberfaellig>0?'var(--red)':'var(--ink)'}}>{ueberfaellig}</div><div className="stat-label">Überfällig</div></div>
+        </div>
       </aside>
 
       <main className="main">
-        {view==='hq'&&<HQView/>}
-        {view==='board-at'&&<PersonalBoard owner="AT"/>}
-        {view==='board-op'&&<PersonalBoard owner="OP"/>}
-        {view==='board-dc'&&<PersonalBoard owner="DC"/>}
+        {view==='heute'&&<HeuteView/>}
+        {view==='plan'&&<PlanView/>}
         {view==='aufgaben'&&<AufgabenView/>}
-        {view==='produkte'&&<ProdukteView/>}
-        {view==='lieferanten'&&<LieferantenView/>}
-        {view==='samples'&&<SamplesView/>}
-        {view==='content'&&<ContentView/>}
-        {view==='finanzen'&&<FinanzenView/>}
+        {view==='design'&&<DesignView/>}
+        {view==='dateien'&&<DateienView/>}
         {view==='entscheidungen'&&<EntscheidungenView/>}
       </main>
 
-      {showAufgabeModal&&(
-        <Modal title={editAufgabe?.id?'Aufgabe bearbeiten':'Neue Aufgabe'} onClose={()=>{setShowAufgabeModal(false);setEditAufgabe(null)}}>
-          <AufgabeForm initial={editAufgabe||undefined} produkte={produkte} lieferanten={lieferanten} currentOwner={currentOwner} onSave={load} onClose={()=>{setShowAufgabeModal(false);setEditAufgabe(null)}}/>
-        </Modal>
-      )}
-      {showLieferantModal&&<LieferantModal/>}
-      {showSampleModal&&<SampleModal/>}
-      {showContentModal&&<ContentModal/>}
-      {showFinanzModal&&<FinanzModal/>}
-      {showEntscheidungModal&&<EntscheidungModal/>}
+      <nav className="mobile-nav">
+        <div className="mobile-nav-inner">
+          {navItems.slice(0,5).map(n=>(
+            <button key={n.id} className={`mobile-nav-btn${view===n.id?' active':''}`} onClick={()=>setView(n.id)}>
+              {n.icon}<span className="mobile-nav-label">{n.label.split(' ')[0]}</span>
+            </button>
+          ))}
+          <button className="mobile-nav-btn" onClick={()=>setSidebarOpen(o=>!o)}>{Ico.menu}<span className="mobile-nav-label">Mehr</span></button>
+        </div>
+      </nav>
+
+      {flyout&&<TaskFlyout/>}
+      {designFlyout&&<DesignStudioFlyout/>}
+      {modal==='aufgabe'&&<AufgabeModal/>}
+      {modal==='entscheidung'&&<EntscheidungModal/>}
+      {modal==='datei'&&<DateiModal/>}
+      {modal==='design'&&<DesignModal/>}
+      {modal==='confirm'&&<ConfirmModal/>}
+
+      <div className="toast-container">
+        {toasts.map(t=><div key={t.id} className={`toast${t.type==='success'?' success':t.type==='error'?' error':''}`}>{t.msg}</div>)}
+      </div>
     </div>
   )
 }
