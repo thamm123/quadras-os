@@ -1,0 +1,4 @@
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN5ZnhqaGdsY2p1eXF3aHZrd3NlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MjM0ODgsImV4cCI6MjA5NzE5OTQ4OH0.XcYFHjOMAeEcRfAqdmfQDwsHmFtTq_p_IRrPlWO5a3M.   Anon publik
+
+
+https://syfxjhglcjuyqwhvkwse.supabase.co
