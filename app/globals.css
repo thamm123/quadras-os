@@ -92,6 +92,7 @@ html {
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
   text-rendering: optimizeLegibility;
+  overflow-x: hidden;
 }
 
 body {
@@ -101,6 +102,8 @@ body {
   line-height: 1.5;
   min-height: 100vh;
   min-height: -webkit-fill-available;
+  overflow-x: hidden;
+  width: 100%;
   background:
     radial-gradient(circle at 18% 0%, rgba(255,255,255,0.88), transparent 30%),
     radial-gradient(circle at 82% 8%,  rgba(103,117,133,0.14), transparent 33%),
@@ -113,7 +116,7 @@ button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: var(--r-sm); }
 
 /* ── App shell ────────────────────────────────────────────── */
-.app { display: flex; min-height: 100vh; }
+.app { display: flex; min-height: 100vh; width: 100%; overflow-x: hidden; }
 
 /* ── Sidebar — floating glass panel ──────────────────────── */
 .sidebar {
@@ -228,6 +231,8 @@ button { cursor: pointer; }
   flex: 1;
   padding: var(--sp8) var(--sp10) 120px;
   max-width: 1400px;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 /* ── Command bar ──────────────────────────────────────────── */
@@ -734,7 +739,7 @@ textarea.form-input { resize: vertical; min-height: 76px; }
 
 /* ── Weekly Mission ───────────────────────────────────────── */
 .mission-block {
-  background: var(--ink); border-radius: var(--r-2xl);
+  background: var(--ink); border-radius: var(--r-2xl); overflow: hidden;
   padding: var(--sp7) var(--sp8); margin-bottom: var(--sp8);
   position: relative; overflow: hidden;
 }
@@ -815,7 +820,7 @@ textarea.form-input { resize: vertical; min-height: 76px; }
 @media (max-width: 768px) {
   .sidebar     { transform: translateX(calc(-100% - 32px)); top: 0; left: 0; bottom: 0; border-radius: 0 var(--r-2xl) var(--r-2xl) 0; }
   .sidebar.open{ transform: translateX(0); box-shadow: var(--sh-xl); }
-  .main        { margin-left: 0; padding: var(--sp5) var(--sp4) 120px; }
+  .main        { margin-left: 0; padding: var(--sp5) var(--sp4) 120px; width: 100%; overflow-x: hidden; }
   .mobile-nav  { display: block; }
   .metrics-row { grid-template-columns: 1fr 1fr; gap: var(--sp2); }
   .team-grid   { grid-template-columns: 1fr; }
@@ -825,7 +830,7 @@ textarea.form-input { resize: vertical; min-height: 76px; }
   .form-row    { grid-template-columns: 1fr; }
   .modal       { border-radius: var(--r-2xl) var(--r-2xl) var(--r-xl) var(--r-xl); max-height: 90vh; }
   .overlay     { align-items: flex-end; padding: 0; }
-  .cockpit-hero { border-radius: var(--r-2xl); padding: var(--sp7) var(--sp5) var(--sp6); }
+  .cockpit-hero { border-radius: var(--r-2xl); padding: var(--sp7) var(--sp5) var(--sp6); overflow: hidden; }
   .cockpit-name { font-size: var(--text-2xl); }
   .readiness-grid { grid-template-columns: 1fr; }
   .mission-block { padding: var(--sp5) var(--sp5); border-radius: var(--r-xl); }
