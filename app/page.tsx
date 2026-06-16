@@ -896,7 +896,6 @@ export default function App() {
         <div className="metric-bar" style={{height:6,borderRadius:'var(--r-sm)',marginBottom:'var(--sp6)'}}>
           <div className="metric-bar-fill" style={{width:`${gesamtPct}%`,background:'var(--signal)',height:6,borderRadius:'var(--r-sm)'}}/>
         </div>
-        </div>
         {loading?<>{Array.from({length:3}).map((_,i)=><div key={i} className="card" style={{padding:'var(--sp4)',marginBottom:'var(--sp4)'}}><SkeletonList rows={3}/></div>)}</>
           :phasen.map(phase=>{
             const items=hauptaufgaben.filter(a=>a.phase===phase).sort((a,b)=>a.sortierung-b.sortierung)
