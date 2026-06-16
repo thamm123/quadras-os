@@ -32,6 +32,61 @@ const Ico = {
   empty:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 15s1.5-2 4-2 4 2 4 2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>,
 }
 
+// ── Login Screen ─────────────────────────────────────────────────────────
+function LoginScreen({onLogin}:{onLogin:(name:PersonName)=>void}) {
+  const [email,setEmail]=useState('')
+  const [password,setPassword]=useState('')
+  const [loading,setLoading]=useState(false)
+  const [error,setError]=useState('')
+
+  const login=async()=>{
+    if(!email.trim()||!password.trim()){setError('Bitte E-Mail und Passwort eingeben');return}
+    setLoading(true); setError('')
+    const {data,error:err}=await supabase.auth.signInWithPassword({email:email.trim(),password})
+    if(err){setError('Falsches E-Mail oder Passwort');setLoading(false);return}
+    // Map email to person name
+    const emailLower=email.toLowerCase()
+    const person:PersonName=
+      emailLower.includes('anna-sophie')||emailLower.includes('anna')?'Anna':
+      emailLower.includes('norman')?'Norman':
+      emailLower.includes('support')||emailLower.includes('alexander')?'Alexander':'Alexander'
+    onLogin(person)
+    setLoading(false)
+  }
+
+  return (
+    <div style={{minHeight:'100vh',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',padding:'var(--sp5)'}}>
+      <div style={{width:'100%',maxWidth:380}}>
+        <div style={{textAlign:'center',marginBottom:'var(--sp8)'}}>
+          <div style={{fontFamily:'var(--font-display)',fontSize:'22px',fontWeight:700,letterSpacing:'0.18em',textTransform:'uppercase',color:'var(--ink)',marginBottom:'var(--sp1)'}}>QUADRAS</div>
+          <div style={{fontSize:'11px',color:'var(--muted)',letterSpacing:'0.1em',textTransform:'uppercase',fontWeight:500}}>Founder Operating System</div>
+        </div>
+        <div style={{background:'var(--surface)',borderRadius:'var(--r-xl)',border:'1px solid var(--border)',boxShadow:'var(--sh-md)',padding:'var(--sp6)'}}>
+          <div style={{fontSize:'var(--text-lg)',fontWeight:700,color:'var(--ink)',marginBottom:'var(--sp5)'}}>Anmelden</div>
+          {error&&<div style={{background:'var(--red-bg)',color:'var(--red)',padding:'var(--sp2) var(--sp3)',borderRadius:'var(--r-sm)',fontSize:'var(--text-sm)',marginBottom:'var(--sp4)',fontWeight:500}}>{error}</div>}
+          <div style={{marginBottom:'var(--sp3)'}}>
+            <label style={{display:'block',fontSize:'var(--text-xs)',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:'var(--sp1)'}}>E-Mail</label>
+            <input autoFocus className="form-input" type="email" placeholder="alexander@qua-dras.com" value={email}
+              onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&login()}/>
+          </div>
+          <div style={{marginBottom:'var(--sp5)'}}>
+            <label style={{display:'block',fontSize:'var(--text-xs)',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:'var(--sp1)'}}>Passwort</label>
+            <input className="form-input" type="password" placeholder="••••••••" value={password}
+              onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==='Enter'&&login()}/>
+          </div>
+          <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:'var(--sp3)'}}
+            onClick={login} disabled={loading}>
+            {loading?'Anmelden…':'Anmelden'}
+          </button>
+        </div>
+        <div style={{textAlign:'center',marginTop:'var(--sp4)',fontSize:'var(--text-xs)',color:'var(--muted)'}}>
+          Nur für das QUADRAS Team
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Module-level constants ────────────────────────────────────────────────
 const DEFAULT_READINESS=[
   {id:'produkt',    label:'Produkt freigegeben'},
@@ -59,6 +114,8 @@ const DEFAULT_BRAND=[
 ]
 
 export default function App() {
+  const [authed,      setAuthed]      = useState(false)
+  const [authChecked, setAuthChecked] = useState(false)
   const [view,        setView]        = useState<View>('heute')
   const [aktiv,       setAktiv]       = useState<PersonName>('Alexander')
   const [aufgaben,    setAufgaben]    = useState<Aufgabe[]>([])
@@ -135,8 +192,27 @@ export default function App() {
     loadActivity()
   },[loadActivity])
 
-  useEffect(()=>{ loadAll() },[loadAll])
-  useEffect(()=>{ loadSettings() },[loadSettings])
+  useEffect(()=>{
+    supabase.auth.getSession().then(({data:{session}})=>{
+      if(session) {
+        const email=session.user.email||''
+        const person:PersonName=
+          email.includes('anna-sophie')||email.includes('anna')?'Anna':
+          email.includes('norman')?'Norman':
+          email.includes('support')||email.includes('alexander')?'Alexander':'Alexander'
+        setAktiv(person)
+        setAuthed(true)
+      }
+      setAuthChecked(true)
+    })
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((_,session)=>{
+      setAuthed(!!session)
+    })
+    return ()=>subscription.unsubscribe()
+  },[])
+
+  useEffect(()=>{ if(authed) loadAll() },[loadAll,authed])
+  useEffect(()=>{ if(authed) loadSettings() },[loadSettings,authed])
 
   // Optimised realtime — diff injection
   useEffect(()=>{
@@ -1448,6 +1524,10 @@ export default function App() {
   const ap=PERSONEN.find(p=>p.name===aktiv)!
 
   return (
+    if(!authChecked) return <div style={{minHeight:'100vh',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}><div style={{fontSize:'var(--text-sm)',color:'var(--muted)'}}>Laden…</div></div>
+    if(!authed) return <LoginScreen onLogin={(name)=>{setAktiv(name);setAuthed(true)}}/>
+
+    return (
     <div className="app">
       <aside className={`sidebar${sidebarOpen?' open':''}`}>
         <div className="sidebar-logo"><div className="sidebar-logo-name">Quadras</div><div className="sidebar-logo-sub">Founder Operating System</div></div>
@@ -1476,6 +1556,10 @@ export default function App() {
           <div className="stat"><div className="stat-num">{offenGesamt}</div><div className="stat-label">Team</div></div>
           <div className="stat"><div className="stat-num" style={{color:ueberfaellig>0?'var(--red)':'var(--ink)'}}>{ueberfaellig}</div><div className="stat-label">Überfällig</div></div>
         </div>
+        <button style={{margin:'0 var(--sp4) var(--sp4)',padding:'var(--sp2)',borderRadius:'var(--r-sm)',border:'1px solid var(--border)',background:'none',color:'var(--muted)',fontSize:'var(--text-xs)',cursor:'pointer',fontFamily:'var(--font)',width:'calc(100% - var(--sp8))',textAlign:'center'}}
+          onClick={async()=>{await supabase.auth.signOut();setAuthed(false)}}>
+          Abmelden
+        </button>
       </aside>
 
       <main className="main">
@@ -1510,5 +1594,5 @@ export default function App() {
         {toasts.map(t=><div key={t.id} className={`toast${t.type==='success'?' success':t.type==='error'?' error':''}`}>{t.msg}</div>)}
       </div>
     </div>
-  )
-}
+    )
+  }
