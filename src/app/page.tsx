@@ -3,14 +3,15 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   supabase, PERSONEN, PROJEKTE, PRIOS, STATUSES,
   DESIGN_KATS, DESIGN_STATUS, FREIGABE_STATUS, PERSON_HEX, PRIO_HEX,
-  Aufgabe, Entscheidung, Datei, DesignIdee, Comment, FeedbackEntry,
+  Aufgabe, Entscheidung, Datei, DesignIdee, Comment, FeedbackEntry, Notification,
   todayStr, in48hStr, in7dStr, isOverdue, isSoon, safeDate, fmtDate,
-  logActivity, type PersonName
+  logActivity, notifyAll, type PersonName
 } from '../lib/supabase'
 
 type View = 'heute'|'plan'|'aufgaben'|'design'|'dateien'|'entscheidungen'
 type Toast = { id:number; msg:string; type:'default'|'success'|'error' }
 type ActivityEntry = { id:string; entity_type:string; entity_titel:string; action:string; person:string; created_at:string }
+type Risiko = { id:string; titel:string; wahrscheinlichkeit:string; impact:string; gegenmasnahme:string; owner:string; status:string; created_at:string }
 let toastId = 0
 
 const Ico = {
@@ -31,8 +32,94 @@ const Ico = {
   empty:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 15s1.5-2 4-2 4 2 4 2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>,
 }
 
+// ── Login Screen ─────────────────────────────────────────────────────────
+function LoginScreen({onLogin}:{onLogin:(name:PersonName)=>void}) {
+  const [email,setEmail]=useState('')
+  const [password,setPassword]=useState('')
+  const [loading,setLoading]=useState(false)
+  const [error,setError]=useState('')
+
+  const login=async()=>{
+    if(!email.trim()||!password.trim()){setError('Bitte E-Mail und Passwort eingeben');return}
+    setLoading(true); setError('')
+    const {data,error:err}=await supabase.auth.signInWithPassword({email:email.trim(),password})
+    if(err){setError('Falsches E-Mail oder Passwort');setLoading(false);return}
+    // Map email to person name
+    const emailLower=email.toLowerCase()
+    const person:PersonName=
+      emailLower.includes('anna-sophie')||emailLower.includes('anna')?'Anna':
+      emailLower.includes('norman')?'Norman':
+      emailLower.includes('support')||emailLower.includes('alexander')?'Alexander':'Alexander'
+    onLogin(person)
+    setLoading(false)
+  }
+
+  return (
+    <div style={{minHeight:'100vh',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',padding:'var(--sp5)'}}>
+      <div style={{width:'100%',maxWidth:380}}>
+        <div style={{textAlign:'center',marginBottom:'var(--sp8)'}}>
+          <div style={{fontFamily:'var(--font-display)',fontSize:'22px',fontWeight:700,letterSpacing:'0.18em',textTransform:'uppercase',color:'var(--ink)',marginBottom:'var(--sp1)'}}>QUADRAS</div>
+          <div style={{fontSize:'11px',color:'var(--muted)',letterSpacing:'0.1em',textTransform:'uppercase',fontWeight:500}}>Founder Operating System</div>
+        </div>
+        <div style={{background:'var(--surface)',borderRadius:'var(--r-xl)',border:'1px solid var(--border)',boxShadow:'var(--sh-md)',padding:'var(--sp6)'}}>
+          <div style={{fontSize:'var(--text-lg)',fontWeight:700,color:'var(--ink)',marginBottom:'var(--sp5)'}}>Anmelden</div>
+          {error&&<div style={{background:'var(--red-bg)',color:'var(--red)',padding:'var(--sp2) var(--sp3)',borderRadius:'var(--r-sm)',fontSize:'var(--text-sm)',marginBottom:'var(--sp4)',fontWeight:500}}>{error}</div>}
+          <div style={{marginBottom:'var(--sp3)'}}>
+            <label style={{display:'block',fontSize:'var(--text-xs)',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:'var(--sp1)'}}>E-Mail</label>
+            <input autoFocus className="form-input" type="email" placeholder="alexander@qua-dras.com" value={email}
+              onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&login()}/>
+          </div>
+          <div style={{marginBottom:'var(--sp5)'}}>
+            <label style={{display:'block',fontSize:'var(--text-xs)',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:'var(--sp1)'}}>Passwort</label>
+            <input className="form-input" type="password" placeholder="••••••••" value={password}
+              onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==='Enter'&&login()}/>
+          </div>
+          <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:'var(--sp3)'}}
+            onClick={login} disabled={loading}>
+            {loading?'Anmelden…':'Anmelden'}
+          </button>
+        </div>
+        <div style={{textAlign:'center',marginTop:'var(--sp4)',fontSize:'var(--text-xs)',color:'var(--muted)'}}>
+          Nur für das QUADRAS Team
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Module-level constants ────────────────────────────────────────────────
+const DEFAULT_READINESS=[
+  {id:'produkt',    label:'Produkt freigegeben'},
+  {id:'bulk',       label:'Bulk-Order ausgelöst'},
+  {id:'packaging',  label:'Packaging bestellt'},
+  {id:'shopify',    label:'Shopify live'},
+  {id:'checkout',   label:'Checkout getestet'},
+  {id:'rechtlich',  label:'AGB & Impressum live'},
+  {id:'fotos',      label:'Produktfotos fertig'},
+  {id:'newsletter', label:'Newsletter aktiv'},
+  {id:'content',    label:'Launch-Content bereit'},
+  {id:'support',    label:'Support & Retouren bereit'},
+]
+const DEFAULT_BRAND=[
+  {id:'website_premium',  label:'Website wirkt premium'},
+  {id:'texte_quadras',    label:'Produkttexte klingen nach QUADRAS'},
+  {id:'packaging_brand',  label:'Packaging wirkt ruhig & hochwertig'},
+  {id:'hangtags_brand',   label:'Hangtags passen zur Materialwelt'},
+  {id:'foto_sprache',     label:'Fotosprache ist definiert'},
+  {id:'social_look',      label:'Social Grid Look ist konsistent'},
+  {id:'patch_story',      label:'Patch-System wird verständlich erklärt'},
+  {id:'farben_final',     label:'Farben & Typografie sind final'},
+  {id:'founder_story',    label:'Founder Edition Story ist klar'},
+  {id:'no_cheap_vibes',   label:'Kein Dropshipping-Feeling irgendwo'},
+]
+
 export default function App() {
+  const [authed,      setAuthed]      = useState(false)
+  const [authChecked, setAuthChecked] = useState(false)
   const [view,        setView]        = useState<View>('heute')
+  const [cmdOpen,     setCmdOpen]     = useState(false)
+  const [cmdQuery,    setCmdQuery]    = useState('')
+  const [focusTask,   setFocusTask]   = useState<Aufgabe|null>(null)
   const [aktiv,       setAktiv]       = useState<PersonName>('Alexander')
   const [aufgaben,    setAufgaben]    = useState<Aufgabe[]>([])
   const [entscheid,   setEntscheid]   = useState<Entscheidung[]>([])
@@ -54,6 +141,42 @@ export default function App() {
   const [fStatus,setFStatus]=useState('Offen')
   const [fDKat,setFDKat]=useState('Alle')
   const [fDFG,setFDFG]=useState('Alle')
+  const [weeklyMission, setWeeklyMission] = useState('')
+  const [missionEdit, setMissionEdit] = useState(false)
+  const [missionDraft, setMissionDraft] = useState('')
+  const [readiness, setReadiness] = useState<Record<string,boolean>>({})
+  const [brandReadiness, setBrandReadiness] = useState<Record<string,boolean>>({})
+  const [risiken, setRisiken] = useState<Risiko[]>([])
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [lastSeen, setLastSeen] = useState<string>(new Date().toISOString())
+
+
+
+  // Load team settings from Supabase (shared across all team members)
+  const loadSettings = useCallback(async()=>{
+    const [ms, ls, bs, rs] = await Promise.all([
+      supabase.from('team_settings').select('*').eq('id','weekly_mission').single(),
+      supabase.from('team_settings').select('*').eq('id','launch_readiness').single(),
+      supabase.from('team_settings').select('*').eq('id','brand_readiness').single(),
+      supabase.from('risiken').select('*').order('created_at',{ascending:false}),
+    ])
+    if(ms.data?.value?.text) setWeeklyMission(ms.data.value.text)
+    if(ls.data?.value) setReadiness(ls.data.value)
+    if(bs.data?.value) setBrandReadiness(bs.data.value)
+    if(rs.data) setRisiken(rs.data)
+    setSettingsLoaded(true)
+  },[])
+
+  const loadNotifications = useCallback(async()=>{
+    const {data}=await supabase.from('notifications')
+      .select('*').or(`fuer.eq.${aktiv},fuer.eq.Alle`)
+      .order('created_at',{ascending:false}).limit(30)
+    if(data) setNotifications(data)
+  },[aktiv])
+
+  useEffect(()=>{ loadSettings() },[loadSettings])
 
   const toast = useCallback((msg:string,type:Toast['type']='default')=>{
     const id=++toastId; setToasts(t=>[...t,{id,msg,type}])
@@ -82,11 +205,40 @@ export default function App() {
     loadActivity()
   },[loadActivity])
 
-  useEffect(()=>{ loadAll() },[loadAll])
+  useEffect(()=>{
+    supabase.auth.getSession().then(({data:{session}})=>{
+      if(session) {
+        const email=session.user.email||''
+        const person:PersonName=
+          email.includes('anna-sophie')||email.includes('anna')?'Anna':
+          email.includes('norman')?'Norman':
+          email.includes('support')||email.includes('alexander')?'Alexander':'Alexander'
+        setAktiv(person)
+        setAuthed(true)
+      }
+      setAuthChecked(true)
+    })
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((_,session)=>{
+      setAuthed(!!session)
+    })
+    return ()=>subscription.unsubscribe()
+  },[])
+
+  useEffect(()=>{ if(authed) loadAll() },[loadAll,authed])
+  useEffect(()=>{ if(authed) loadSettings() },[loadSettings,authed])
+  useEffect(()=>{ if(authed) loadNotifications() },[loadNotifications,authed])
 
   // Optimised realtime — diff injection
   useEffect(()=>{
     const ch=supabase.channel('quadras-v7')
+      .on('postgres_changes',{event:'*',schema:'public',table:'team_settings'},()=>loadSettings())
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications'},({new:n})=>{
+        const notif=n as Notification
+        if(notif.fuer===aktiv||notif.fuer==='Alle') setNotifications(prev=>[notif,...prev])
+      })
+      .on('postgres_changes',{event:'*',schema:'public',table:'risiken'},()=>{
+        supabase.from('risiken').select('*').order('created_at',{ascending:false}).then(({data})=>{if(data)setRisiken(data)})
+      })
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'aufgaben'},({new:n})=>{
         setAufgaben(prev=>[n as Aufgabe,...prev])
       })
@@ -125,8 +277,9 @@ export default function App() {
     const h=(e:KeyboardEvent)=>{
       const tag=(e.target as HTMLElement).tagName
       if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return
-      if(e.key==='Escape'){ setModal(null); setFlyout(null); setDesignFlyout(null); setSidebarOpen(false) }
+      if(e.key==='Escape'){ setModal(null); setFlyout(null); setDesignFlyout(null); setSidebarOpen(false); setCmdOpen(false); setFocusTask(null) }
       if(modal||flyout||designFlyout) return
+      if((e.metaKey||e.ctrlKey)&&e.key==='k'){ e.preventDefault(); setCmdOpen(o=>!o); return }
       if(e.key==='n'||e.key==='N'){ setEditA(null); setModal('aufgabe') }
       if(e.key==='h'||e.key==='H') setView('heute')
       if(e.key==='p'||e.key==='P') setView('plan')
@@ -283,8 +436,8 @@ export default function App() {
           </div>
         )}
       </div>
-    )
-  }
+  )
+}
 
   function SkeletonList({rows=4}:{rows?:number}) {
     return <>{Array.from({length:rows}).map((_,i)=>(
@@ -308,12 +461,37 @@ export default function App() {
       })
     },[a.id])
 
+    const [commentFile, setCommentFile] = useState<File|null>(null)
+    const commentFileRef = useRef<HTMLInputElement>(null)
+
     const addComment=async()=>{
-      if(!newComment.trim()) return
-      const payload={aufgabe_id:a.id,person:aktiv,kommentar:newComment.trim()}
+      if(!newComment.trim()&&!commentFile) return
+      let anhang_url='', anhang_name='', anhang_typ=''
+      if(commentFile){
+        const fname=`${Date.now()}_${commentFile.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`
+        const {error}=await supabase.storage.from('kommentar-anhaenge').upload(fname,commentFile)
+        if(!error){
+          const {data}=supabase.storage.from('kommentar-anhaenge').getPublicUrl(fname)
+          anhang_url=data.publicUrl; anhang_name=commentFile.name
+          anhang_typ=commentFile.type.startsWith('image/')?'bild':'datei'
+        }
+        setCommentFile(null)
+      }
+      const payload={aufgabe_id:a.id,person:aktiv,kommentar:newComment.trim(),anhang_url,anhang_name,anhang_typ}
       setComments(prev=>[...prev,{...payload,id:'tmp-'+Date.now(),created_at:new Date().toISOString()}])
       setNewComment('')
       await supabase.from('aufgabe_comments').insert(payload)
+      // Notifications
+      await notifyAll(aktiv,'kommentar',a.titel,`${aktiv}: ${newComment.trim().substring(0,60)}`,a.id,'aufgabe')
+      // @mention detection
+      const mentions=newComment.match(/@(Alexander|Norman|Anna)/g)||[]
+      for(const m of mentions){
+        const name=m.slice(1) as PersonName
+        if(name!==aktiv){
+          await supabase.from('notifications').insert({fuer:name,von:aktiv,typ:'mention',titel:a.titel,nachricht:`${aktiv} hat dich erwähnt: ${newComment.trim().substring(0,80)}`,entity_id:a.id,entity_typ:'aufgabe'})
+        }
+      }
+      await logActivity('aufgabe',a.id,a.titel,'kommentiert',aktiv)
     }
 
     const addSubtask=async()=>{
@@ -409,15 +587,40 @@ export default function App() {
                       <span className="comment-person" style={{color:PERSON_HEX[c.person]||'var(--slate)'}}>{c.person}</span>
                       <span className="comment-time">{new Date(c.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
                     </div>
-                    <div className="comment-text">{c.kommentar}</div>
+                    <div className="comment-text">
+                      {c.kommentar.split(/(@(?:Alexander|Norman|Anna))/g).map((part,i)=>
+                        /^@(Alexander|Norman|Anna)$/.test(part)
+                          ?<span key={i} style={{color:PERSON_HEX[part.slice(1)]||'var(--signal)',fontWeight:700}}>{part}</span>
+                          :<span key={i}>{part}</span>
+                      )}
+                    </div>
+                    {c.anhang_url&&c.anhang_url.startsWith('https://')&&(
+                      <div style={{marginTop:'var(--sp2)'}}>
+                        {c.anhang_typ==='bild'
+                          ?<img src={c.anhang_url} alt={c.anhang_name} style={{maxWidth:'100%',borderRadius:'var(--r-md)',maxHeight:200,objectFit:'cover',cursor:'pointer'}} onClick={()=>window.open(c.anhang_url,'_blank')}/>
+                          :<a href={c.anhang_url} target="_blank" rel="noopener noreferrer" style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:'var(--text-xs)',color:'var(--signal)',fontWeight:600,textDecoration:'none',padding:'3px 8px',background:'var(--signal-bg)',borderRadius:'var(--r-sm)'}}>
+                            {Ico.file} {c.anhang_name}
+                          </a>}
+                      </div>
+                    )}
                   </div>
                 ))
               }
-              <div className="comment-form">
-                <input className="form-input" style={{fontSize:'var(--text-sm)'}} placeholder="Kommentar..." value={newComment}
-                  onChange={e=>setNewComment(e.target.value)}
-                  onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();addComment()}}}/>
-                <button className="btn btn-primary btn-sm" onClick={addComment}>Senden</button>
+              <div style={{marginBottom:'var(--sp2)'}}>
+                <div style={{display:'flex',gap:'var(--sp2)',alignItems:'flex-end'}}>
+                  <div style={{flex:1}}>
+                    <textarea className="form-input" style={{fontSize:'var(--text-sm)',minHeight:60,resize:'none'}}
+                      placeholder="Kommentar… @Alexander @Norman @Anna für Mentions"
+                      value={newComment} onChange={e=>setNewComment(e.target.value)}
+                      onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();addComment()}}}/>
+                    {commentFile&&<div style={{fontSize:'var(--text-xs)',color:'var(--signal)',marginTop:3,fontFamily:'var(--font-mono)'}}>📎 {commentFile.name}</div>}
+                  </div>
+                  <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                    <button className="btn btn-secondary btn-sm" onClick={()=>commentFileRef.current?.click()} title="Datei anhängen">📎</button>
+                    <button className="btn btn-primary btn-sm" onClick={addComment}>→</button>
+                  </div>
+                </div>
+                <input ref={commentFileRef} type="file" style={{display:'none'}} accept="image/*,.pdf,.doc,.docx,.xlsx,.zip" onChange={e=>setCommentFile(e.target.files?.[0]||null)}/>
               </div>
             </div>
             <div className="flyout-actions">
@@ -458,7 +661,15 @@ export default function App() {
               :<div className="design-flyout-img-placeholder">{idee.kategorie}</div>}
           </div>
           <div className="design-flyout-body">
-            {idee.beschreibung&&(
+            {/* PLM Block */}
+            <div className="plm-block" style={{marginBottom:'var(--sp4)'}}>
+              <div className="plm-logo">QUADRAS · QOS-{String(ideen.indexOf(idee)+1).padStart(3,'0')}</div>
+              <div className="plm-name">{idee.titel}</div>
+              <div className="plm-edition">{idee.kategorie} / Edition 01</div>
+              <div className="plm-mj-prompt">
+                MJ Prompt: {idee.titel} patch design, 65x43mm format, border-radius 4, flat embroidery, --ar 65:43 --v 7.0 --style raw
+              </div>
+            </div>
               <div className="flyout-section"><div className="flyout-section-label">Konzept</div>
                 <div style={{fontSize:'var(--text-base)',color:'var(--slate)',lineHeight:1.6}}>{idee.beschreibung}</div>
               </div>
@@ -503,28 +714,36 @@ export default function App() {
   // ── Modals ─────────────────────────────────────────────────────────────────
   function AufgabeModal() {
     const isEdit=!!editA?.id
-    const [f,setF]=useState({titel:editA?.titel||'',beschreibung:editA?.beschreibung||'',person:editA?.person||aktiv,projekt:editA?.projekt||PROJEKTE[0],prioritaet:editA?.prioritaet||'Normal',status:editA?.status||'Offen',deadline:editA?.deadline||'',ergebnis:editA?.ergebnis||'',blocker:editA?.blocker||''})
+    const [f,setF]=useState({titel:editA?.titel||'',beschreibung:editA?.beschreibung||'',person:editA?.person||aktiv,personen:editA?.personen||[editA?.person||aktiv],projekt:editA?.projekt||PROJEKTE[0],prioritaet:editA?.prioritaet||'Normal',status:editA?.status||'Offen',deadline:editA?.deadline||'',ergebnis:editA?.ergebnis||'',blocker:editA?.blocker||'',nummer:editA?.nummer?.toString()||''})
     const [errors,setErrors]=useState<Record<string,string>>({})
     const [saving,setSaving]=useState(false)
     const up=(k:string,v:string)=>{setF(p=>({...p,[k]:v}));setErrors(e=>({...e,[k]:''})) }
     const validate=()=>{
       const e:Record<string,string>={}
       if(!f.titel.trim()) e.titel='Bitte Aufgabe eingeben'
-      if(!f.deadline) e.deadline='Deadline ist Pflichtfeld'
       if(!f.ergebnis.trim()) e.ergebnis='Gewünschtes Ergebnis ist Pflichtfeld'
       setErrors(e); return Object.keys(e).length===0
     }
     const save=async()=>{
       if(!validate()) return; setSaving(true)
-      const data={...f,deadline:safeDate(f.deadline),beschreibung:f.beschreibung||'',blocker:f.blocker||''}
+      const data={...f,deadline:safeDate(f.deadline)||null,beschreibung:f.beschreibung||'',blocker:f.blocker||'',nummer:f.nummer?parseInt(f.nummer):null,person:f.personen[0]||aktiv,personen:f.personen}
       if(isEdit){
         const {error}=await supabase.from('aufgaben').update(data).eq('id',editA!.id)
         if(error){toast('Fehler: '+error.message,'error');setSaving(false);return}
-        await logActivity('aufgabe',editA!.id,f.titel,'aktualisiert',aktiv); toast('Aktualisiert','success')
+        await logActivity('aufgabe',editA!.id,f.titel,'aktualisiert',aktiv)
+        await notifyAll(aktiv,'aufgabe_update',f.titel,`${aktiv} hat die Aufgabe aktualisiert`,editA!.id,'aufgabe')
+        toast('Aktualisiert','success')
       } else {
         const {data:ins,error}=await supabase.from('aufgaben').insert(data).select().single()
         if(error){toast('Fehler: '+error.message,'error');setSaving(false);return}
-        if(ins) await logActivity('aufgabe',ins.id,f.titel,'erstellt',aktiv); toast('Erstellt','success')
+        if(ins){
+          await logActivity('aufgabe',ins.id,f.titel,'erstellt',aktiv)
+          // Notify assigned persons
+          for(const p of f.personen.filter(p=>p!==aktiv)){
+            await notifyAll(aktiv,'zuweisung',f.titel,`${aktiv} hat dir eine Aufgabe zugewiesen`,ins.id,'aufgabe')
+          }
+        }
+        toast('Erstellt','success')
       }
       setSaving(false);setModal(null);setEditA(null)
     }
@@ -533,16 +752,32 @@ export default function App() {
         <div className="modal">
           <div className="modal-header"><span className="modal-title">{isEdit?'Aufgabe bearbeiten':'Neue Aufgabe'}</span><button className="modal-close" onClick={()=>setModal(null)}>{Ico.x}</button></div>
           <div className="modal-body">
-            <div className="form-group"><label className="form-label">Aufgabe *</label><input autoFocus required className={`form-input${errors.titel?' error':''}`} placeholder="Aktionsverb + konkretes Ziel" value={f.titel} onChange={e=>up('titel',e.target.value)}/>{errors.titel&&<div className="form-error">{errors.titel}</div>}</div>
+            <div className="form-row">
+              <div className="form-group" style={{flex:3}}><label className="form-label">Aufgabe *</label><input autoFocus required className={`form-input${errors.titel?' error':''}`} placeholder="Aktionsverb + konkretes Ziel" value={f.titel} onChange={e=>up('titel',e.target.value)}/>{errors.titel&&<div className="form-error">{errors.titel}</div>}</div>
+              <div className="form-group" style={{flex:1}}><label className="form-label">Nummer</label><input className="form-input" type="number" min="1" placeholder="z.B. 01" value={f.nummer} onChange={e=>up('nummer',e.target.value)}/></div>
+            </div>
             <div className="form-group"><label className="form-label">Details</label><textarea className="form-input" placeholder="Kontext, Links, Hinweise..." value={f.beschreibung} onChange={e=>up('beschreibung',e.target.value)}/></div>
+            <div className="form-group">
+              <label className="form-label">Verantwortlich (mehrere möglich)</label>
+              <div style={{display:'flex',gap:'var(--sp2)',flexWrap:'wrap'}}>
+                {PERSONEN.map(p=>(
+                  <button key={p.name} type="button"
+                    className={`chip${f.personen.includes(p.name)?' on':''}`}
+                    style={f.personen.includes(p.name)?{background:PERSON_HEX[p.name],borderColor:PERSON_HEX[p.name]}:{}}
+                    onClick={()=>{
+                      const next=f.personen.includes(p.name)
+                        ?f.personen.filter(x=>x!==p.name)
+                        :[...f.personen,p.name]
+                      if(next.length>0) setF(prev=>({...prev,personen:next,person:next[0]}))
+                    }}>{p.name}</button>
+                ))}
+              </div>
+            </div>
             <div className="form-row">
-              <div className="form-group"><label className="form-label">Verantwortlich *</label><select required className="form-input" value={f.person} onChange={e=>up('person',e.target.value)}>{PERSONEN.map(p=><option key={p.name}>{p.name}</option>)}</select></div>
               <div className="form-group"><label className="form-label">Priorität</label><select className="form-input" value={f.prioritaet} onChange={e=>up('prioritaet',e.target.value)}>{PRIOS.map(p=><option key={p}>{p}</option>)}</select></div>
+              <div className="form-group"><label className="form-label">Deadline (optional)</label><input type="date" className={`form-input${errors.deadline?' error':''}`} value={f.deadline} onChange={e=>up('deadline',e.target.value)}/></div>
             </div>
-            <div className="form-row">
-              <div className="form-group"><label className="form-label">Bereich *</label><select required className="form-input" value={f.projekt} onChange={e=>up('projekt',e.target.value)}>{PROJEKTE.map(p=><option key={p}>{p}</option>)}</select></div>
-              <div className="form-group"><label className="form-label">Deadline *</label><input type="date" required min={todayStr()} className={`form-input${errors.deadline?' error':''}`} value={f.deadline} onChange={e=>up('deadline',e.target.value)}/>{errors.deadline&&<div className="form-error">{errors.deadline}</div>}</div>
-            </div>
+            <div className="form-group"><label className="form-label">Bereich *</label><select required className="form-input" value={f.projekt} onChange={e=>up('projekt',e.target.value)}>{PROJEKTE.map(p=><option key={p}>{p}</option>)}</select></div>
             <div className="form-group"><label className="form-label">Gewünschtes Ergebnis *</label><input required className={`form-input${errors.ergebnis?' error':''}`} placeholder="Wann ist es WIRKLICH erledigt?" value={f.ergebnis} onChange={e=>up('ergebnis',e.target.value)}/>{errors.ergebnis&&<div className="form-error">{errors.ergebnis}</div>}</div>
             <div className="form-group"><label className="form-label">Blocker</label><input className="form-input" placeholder="Was blockiert?" value={f.blocker} onChange={e=>up('blocker',e.target.value)}/></div>
             {isEdit&&<div className="form-group"><label className="form-label">Status</label><select className="form-input" value={f.status} onChange={e=>up('status',e.target.value)}>{STATUSES.map(s=><option key={s}>{s}</option>)}</select></div>}
@@ -681,98 +916,341 @@ export default function App() {
   // ── VIEWS ──────────────────────────────────────────────────────────────────
   function HeuteView() {
     const ap=PERSONEN.find(p=>p.name===aktiv)!
+
+    // Executive summary
+    const gesamtPct=hauptaufgaben.length>0?Math.round(hauptaufgaben.filter(a=>a.status==='Erledigt').length/hauptaufgaben.length*100):0
+    const launchStatus=ueberfaellig>3||gesamtPct<30?'rot':ueberfaellig>0||gesamtPct<70?'gelb':'gruen'
+    const statusColor={'rot':'var(--red)','gelb':'var(--amber)','gruen':'var(--signal)'}[launchStatus]
+    const statusText={'rot':'Rot — Sofort handeln','gelb':'Gelb — Im Plan, Risiken vorhanden','gruen':'Grün — Auf Kurs'}[launchStatus]
+    const blockerAufgaben=aufgaben.filter(a=>a.blocker&&a.blocker.trim()!==''&&a.status!=='Erledigt')
+    const designFeedbackOffen=ideen.filter(i=>i.status==='Feedback ausstehend'||i.freigabe==='Überarbeiten')
+    const offeneEntscheidungen=entscheid.slice(0,5)
+    const alle7Tage=aufgaben.filter(a=>a.deadline&&a.deadline>=t&&a.deadline<=h7)
+    const wipWarn=(name:string)=>{
+      const cnt=aufgaben.filter(a=>a.person===name&&a.status!=='Erledigt'&&!a.parent_id).length
+      return cnt>=6?'rot':cnt>=4?'gelb':null
+    }
+    const BRAND_ITEMS=DEFAULT_BRAND.map(i=>({...i,label:brandReadiness['label_'+i.id]||i.label}))
+    const brandDone=BRAND_ITEMS.filter(i=>brandReadiness[i.id]).length
+    const brandPct=Math.round(brandDone/BRAND_ITEMS.length*100)
+    const brandColor=brandPct<50?'var(--red)':brandPct<80?'var(--amber)':'var(--signal)'
+    // Load custom labels from readiness/brandReadiness objects (stored as label_XXX keys)
+    const READINESS_ITEMS=DEFAULT_READINESS.map(i=>({...i,label:readiness['label_'+i.id]||i.label}))
+    const readinessDone=READINESS_ITEMS.filter(i=>readiness[i.id]).length
+    const readinessPct=Math.round(readinessDone/READINESS_ITEMS.length*100)
+    const readinessColor=readinessPct<50?'var(--red)':readinessPct<80?'var(--amber)':'var(--signal)'
+    const toggleReadiness=async(id:string)=>{
+      const next={...readiness,[id]:!readiness[id]}
+      setReadiness(next)
+      await supabase.from('team_settings').upsert({id:'launch_readiness',value:next,updated_by:aktiv})
+    }
+    const updateReadinessLabel=async(id:string,label:string)=>{
+      const next={...readiness,['label_'+id]:label}
+      setReadiness(next)
+      await supabase.from('team_settings').upsert({id:'launch_readiness',value:next,updated_by:aktiv})
+    }
+    const updateBrandLabel=async(id:string,label:string)=>{
+      const next={...brandReadiness,['label_'+id]:label}
+      setBrandReadiness(next)
+      await supabase.from('team_settings').upsert({id:'brand_readiness',value:next,updated_by:aktiv})
+    }
+    const toggleBrandReadiness=async(id:string)=>{
+      const next={...brandReadiness,[id]:!brandReadiness[id]}
+      setBrandReadiness(next)
+      await supabase.from('team_settings').upsert({id:'brand_readiness',value:next,updated_by:aktiv})
+    }
+    const addRisiko=async(titel:string,impact:string,owner:string,gegenmasnahme:string)=>{
+      await supabase.from('risiken').insert({titel,impact,wahrscheinlichkeit:'Mittel',gegenmasnahme,owner,status:'Offen'})
+    }
+    const delRisiko=(id:string)=>confirm('Risiko löschen?',async()=>{
+      setRisiken(prev=>prev.filter(r=>r.id!==id))
+      await supabase.from('risiken').delete().eq('id',id)
+    })
+    const saveMission=async()=>{
+      setWeeklyMission(missionDraft)
+      setMissionEdit(false)
+      await supabase.from('team_settings').upsert({id:'weekly_mission',value:{text:missionDraft},updated_by:aktiv})
+    }
+    const missionLines=weeklyMission.split('\n').filter(l=>l.trim()!=='')
+
     return (
       <div>
-        <div className="cockpit-hero">
-          <div className="cockpit-role"><div className="cockpit-dot" style={{background:PERSON_HEX[aktiv]}}/>{ap.role}</div>
-          <div className="cockpit-name">{aktiv}</div>
-          <div className="cockpit-meta">
-            {new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}
-            {ueberfaellig>0&&<span className="cockpit-critical-tag">· {ueberfaellig} überfällig</span>}
+        {/* Weekly Mission */}
+        <div className="mission-block">
+          <div className="mission-eyebrow">Weekly Mission</div>
+          {missionEdit ? (
+            <>
+              <textarea className="mission-textarea" autoFocus
+                placeholder={"Diese Woche ist erfolgreich, wenn:\n- Packaging final bestellt\n- Shopify Checkout getestet\n- 3 Designentscheidungen getroffen"}
+                value={missionDraft} onChange={e=>setMissionDraft(e.target.value)}
+                onKeyDown={e=>e.key==='Enter'&&e.metaKey&&saveMission()}/>
+              <div style={{display:'flex',gap:'var(--sp2)'}}>
+                <button className="mission-edit-btn" onClick={saveMission} style={{background:'rgba(47,111,85,0.3)',borderColor:'rgba(47,111,85,0.5)',color:'#6fcfa3'}}>Speichern</button>
+                <button className="mission-edit-btn" onClick={()=>setMissionEdit(false)}>Abbrechen</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <button className="mission-edit-btn" onClick={()=>{setMissionDraft(weeklyMission);setMissionEdit(true)}}>Bearbeiten</button>
+              {missionLines.length>0 ? (
+                <>
+                  <div className="mission-title">Diese Woche zählt:</div>
+                  <div className="mission-items">
+                    {missionLines.map((l,i)=>(
+                      <div key={i} className="mission-item">
+                        <div className="mission-item-dot"/>
+                        {l.replace(/^[-·•]\s*/,'')}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="mission-empty" onClick={()=>{setMissionDraft('');setMissionEdit(true)}}>
+                  Wochenziel setzen — was muss diese Woche passieren, damit der Launch nicht rutscht?
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Executive Summary */}
+        <div className="card" style={{marginBottom:'var(--sp4)',borderLeft:`3px solid ${statusColor}`}}>
+          <div style={{padding:'var(--sp4)'}}>
+            <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
+              <div>
+                <div style={{fontSize:'var(--text-xs)',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:'var(--sp1)'}}>QUADRAS · Launch Status</div>
+                <div style={{fontSize:'var(--text-lg)',fontWeight:700,color:statusColor}}>{statusText}</div>
+              </div>
+              <div style={{textAlign:'right'}}>
+                <div style={{fontFamily:'var(--font-display)',fontSize:'var(--text-4xl)',fontWeight:700,color:statusColor,letterSpacing:'-1px',lineHeight:1}}>{gesamtPct}%</div>
+                <div style={{fontSize:'var(--text-xs)',color:'var(--muted)',marginTop:2}}>aus Hauptaufgaben</div>
+              </div>
+            </div>
+            <div className="launch-bar-phases" style={{marginBottom:'var(--sp2)'}}>
+              {phasen.map(phase=>{
+                const items=hauptaufgaben.filter(a=>a.phase===phase)
+                const pct=items.length?Math.round(items.filter(a=>a.status==='Erledigt').length/items.length*100):0
+                return <div key={phase} className="launch-bar-phase" title={`${phase}: ${pct}%`}><div className="launch-bar-phase-fill" style={{width:`${pct}%`}}/></div>
+              })}
+            </div>
+            <div style={{display:'flex',gap:'var(--sp4)',flexWrap:'wrap',marginTop:'var(--sp2)'}}>
+              {blockerAufgaben.length>0&&<span style={{fontSize:'var(--text-sm)',color:'var(--red)',fontWeight:600}}>{blockerAufgaben.length} Blocker aktiv</span>}
+              {designFeedbackOffen.length>0&&<span style={{fontSize:'var(--text-sm)',color:'var(--amber)',fontWeight:600,cursor:'pointer'}} onClick={()=>setView('design')}>{designFeedbackOffen.length} Design{designFeedbackOffen.length===1?' wartet':' warten'} auf Feedback</span>}
+              {ueberfaellig>0&&<span style={{fontSize:'var(--text-sm)',color:'var(--red)',fontWeight:600}}>{ueberfaellig} überfällig</span>}
+              {blockerAufgaben.length===0&&designFeedbackOffen.length===0&&ueberfaellig===0&&<span style={{fontSize:'var(--text-sm)',color:'var(--signal)',fontWeight:600}}>Keine kritischen Probleme</span>}
+            </div>
           </div>
         </div>
 
-        {/* Launch Barometer */}
-        <div className="launch-bar">
-          <div className="launch-bar-header"><span className="launch-bar-lbl">Launch-Fortschritt</span><span className="launch-bar-score">{hauptaufgaben.filter(a=>a.status==='Erledigt').length} / {hauptaufgaben.length}</span></div>
-          <div className="launch-bar-phases">
-            {phasen.map(phase=>{
-              const items=hauptaufgaben.filter(a=>a.phase===phase)
-              const pct=items.length?Math.round(items.filter(a=>a.status==='Erledigt').length/items.length*100):0
-              return <div key={phase} className="launch-bar-phase" title={`${phase}: ${pct}%`}><div className="launch-bar-phase-fill" style={{width:`${pct}%`}}/></div>
-            })}
-          </div>
-          <div className="launch-bar-sublabels">{phasen.map(p=><div key={p} className="launch-bar-sublabel">{p.split('·')[1]?.trim()}</div>)}</div>
+        {/* Command Bar — opens Cmd+K */}
+        <div className="command-bar" onClick={()=>setCmdOpen(true)} role="button" tabIndex={0}>
+          <svg className="command-icon" style={{width:16,height:16}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span className="command-placeholder">Suchen, navigieren, anlegen…</span>
+          <span className="command-hint">⌘K</span>
+        </div>
+
+        {/* Hero */}
+        <div className="cockpit-hero">
+          <div className="cockpit-role"><div className="cockpit-dot" style={{background:PERSON_HEX[aktiv]}}/>{ap.role}</div>
+          <div className="cockpit-name">{aktiv}</div>
+          <div className="cockpit-meta">{new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
         </div>
 
         {/* Metrics */}
         <div className="metrics-row">
           <div className="metric"><div className="metric-num" style={{color:PERSON_HEX[aktiv]}}>{meineOffen}</div><div className="metric-lbl">Meine offenen</div><div className="metric-bar"><div className="metric-bar-fill" style={{width:`${donePct}%`,background:PERSON_HEX[aktiv]}}/></div></div>
           <div className="metric"><div className="metric-num" style={{color:ueberfaellig>0?'var(--red)':'var(--signal)'}}>{ueberfaellig}</div><div className="metric-lbl">Überfällig</div></div>
-          <div className="metric"><div className="metric-num">{naechste7.length}</div><div className="metric-lbl">Nächste 7 Tage</div></div>
-          <div className="metric"><div className="metric-num c-signal">{donePct}%</div><div className="metric-lbl">Mein Fortschritt</div></div>
+          <div className="metric"><div className="metric-num" style={{color:blockerAufgaben.length>0?'var(--red)':'var(--ink)'}}>{blockerAufgaben.length}</div><div className="metric-lbl">Blocker aktiv</div></div>
+          <div className="metric"><div className="metric-num" style={{color:designFeedbackOffen.length>0?'var(--amber)':'var(--ink)'}}>{designFeedbackOffen.length}</div><div className="metric-lbl">Design-Feedback</div></div>
         </div>
 
-        {/* 7-day timeline */}
-        {naechste7.length>0&&(
-          <div className="card" style={{marginBottom:'var(--sp4)'}}>
-            <div className="cockpit-section-lbl">Nächste 7 Tage</div>
-            <div className="week-timeline">
-              {weekDays.map(day=>{
-                const dayTasks=naechste7.filter(a=>a.deadline===day)
-                return (
-                  <div key={day} className={`week-day${day===t?' today':''}`}>
-                    <div className="week-day-label">{new Date(day+'T12:00').toLocaleDateString('de-DE',{weekday:'short'})}</div>
-                    <div className="week-day-date">{new Date(day+'T12:00').getDate()}</div>
-                    <div className="week-day-tasks">
-                      {dayTasks.map(a=>(
-                        <div key={a.id} className="week-day-task-dot" title={`${a.titel} · ${a.person}`}
-                          style={{background:PERSON_HEX[a.person]||'var(--slate)'}} onClick={()=>setFlyout(a)}>
-                          {a.person[0]}
-                        </div>
-                      ))}
-                    </div>
+        {/* 7-day timeline — includes done tasks (C fix) */}
+        <div className="card" style={{marginBottom:'var(--sp4)'}}>
+          <div className="section-label">Diese Woche</div>
+          <div className="week-timeline">
+            {weekDays.map(day=>{
+              const dayTasks=alle7Tage.filter(a=>a.deadline===day)
+              return (
+                <div key={day} className={`week-day${day===t?' today':''}`}>
+                  <div className="week-day-label">{new Date(day+'T12:00').toLocaleDateString('de-DE',{weekday:'short'})}</div>
+                  <div className="week-day-date">{new Date(day+'T12:00').getDate()}</div>
+                  <div className="week-day-tasks">
+                    {dayTasks.map(a=>(
+                      <div key={a.id} className="week-day-task-dot"
+                        title={`${a.titel} · ${a.person}${a.status==='Erledigt'?' ✓':''}`}
+                        style={{
+                          background: a.status==='Erledigt'?'var(--bg2)':PERSON_HEX[a.person]||'var(--slate)',
+                          color: a.status==='Erledigt'?'var(--muted)':'var(--surface)',
+                          border: a.status==='Erledigt'?'1px solid var(--border2)':'none',
+                          textDecoration: a.status==='Erledigt'?'line-through':'none',
+                          opacity: a.status==='Erledigt'?0.5:1,
+                        }}
+                        onClick={()=>setFlyout(a)}>
+                        {a.person[0]}
+                      </div>
+                    ))}
+                    {dayTasks.length===0&&<div style={{height:'var(--sp5)'}}/>}
                   </div>
-                )
-              })}
-            </div>
+                </div>
+              )
+            })}
           </div>
-        )}
+        </div>
 
         {/* Critical + Focus */}
         <div className="cockpit-grid">
           <div className="card">
-            {kritisch.length>0?<div className="cockpit-critical-lbl">Kritisch ({kritisch.length})</div>:<div className="cockpit-section-lbl">Kein kritischer Pfad</div>}
-            {loading?<SkeletonList rows={2}/>:kritisch.length===0?<div className="empty"><div className="empty-title c-signal">Alles im grünen Bereich</div></div>:kritisch.slice(0,5).map(a=><AItem key={a.id} a={a} editable/>)}
+            {kritisch.length>0?<div className="section-label-red">Kritisch — sofort handeln ({kritisch.length})</div>:<div className="section-label">Kein kritischer Pfad</div>}
+            {loading?<SkeletonList rows={2}/>:kritisch.length===0
+              ?<div className="empty"><div className="empty-title c-signal">Alles im grünen Bereich</div></div>
+              :kritisch.slice(0,5).map(a=><AItem key={a.id} a={a} editable/>)}
           </div>
           <div className="card">
-            <div className="cockpit-section-lbl">Mein Fokus — Top 3</div>
-            {loading?<SkeletonList rows={3}/>:meineFokus.length===0?<div className="empty"><div className="empty-title c-signal">Keine offenen Aufgaben</div></div>:meineFokus.map(a=><AItem key={a.id} a={a} editable/>)}
+            <div className="section-label">Mein Fokus — Top 3</div>
+            {loading?<SkeletonList rows={3}/>:meineFokus.length===0
+              ?<div className="empty"><div className="empty-title c-signal">Keine offenen Aufgaben</div></div>
+              :meineFokus.map(a=><AItem key={a.id} a={a} editable/>)}
           </div>
         </div>
 
-        {/* Area status overview */}
+        {/* B: Blocker Board */}
+        {blockerAufgaben.length>0&&(
+          <div className="card" style={{marginBottom:'var(--sp4)',borderLeft:'2px solid var(--red)'}}>
+            <div className="cockpit-critical-lbl">Blocker — müssen sofort gelöst werden ({blockerAufgaben.length})</div>
+            {blockerAufgaben.map(a=>(
+              <div key={a.id} className="aufgabe" style={{borderBottom:'1px solid var(--border)'}}>
+                <div className="a-body">
+                  <div className="a-titel" onClick={()=>setFlyout(a)} style={{cursor:'pointer'}}>{a.titel}</div>
+                  <div style={{fontSize:'var(--text-sm)',color:'var(--red)',marginTop:'var(--sp1)',fontWeight:600}}>
+                    Blocker: {a.blocker}
+                  </div>
+                  <div className="a-meta-line" style={{marginTop:'var(--sp1)'}}>
+                    <span style={{color:PERSON_HEX[a.person]||'var(--mid)',fontWeight:600}}>{a.person}</span>
+                    <span className="a-meta-dot"/><span>{a.projekt}</span>
+                  </div>
+                </div>
+                <button className="icon-btn" onClick={()=>setFlyout(a)}>{Ico.edit}</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* A: Design Feedback waiting */}
+        {designFeedbackOffen.length>0&&(
+          <div className="card" style={{marginBottom:'var(--sp4)',borderLeft:'2px solid var(--amber)'}}>
+            <div style={{padding:'var(--sp3) var(--sp4) var(--sp2)',borderBottom:'1px solid var(--amber-bg)',background:'var(--amber-bg)',fontSize:'var(--text-xs)',fontWeight:700,color:'var(--amber)',textTransform:'uppercase',letterSpacing:'0.1em',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span>Design wartet auf Feedback ({designFeedbackOffen.length})</span>
+              <button className="btn btn-xs btn-amber" onClick={()=>setView('design')}>Design Studio öffnen</button>
+            </div>
+            {designFeedbackOffen.slice(0,4).map(i=>(
+              <div key={i.id} style={{display:'flex',alignItems:'center',gap:'var(--sp3)',padding:'var(--sp2) var(--sp4)',borderBottom:'1px solid var(--border)',cursor:'pointer'}} onClick={()=>{setDesignFlyout(i);setView('design')}}>
+                <div style={{width:36,height:36,borderRadius:'var(--r-patch)',background:'var(--bg2)',overflow:'hidden',flexShrink:0}}>
+                  {i.url&&i.url.startsWith('https://')?<img src={i.url} alt={i.titel} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'var(--text-xs)',color:'var(--muted)'}}>{i.kategorie[0]}</div>}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:'var(--text-base)',fontWeight:500,color:'var(--ink)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{i.titel}</div>
+                  <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>{i.kategorie} · {i.von} · <span style={{color:'var(--amber)',fontWeight:600}}>{i.freigabe==='Überarbeiten'?'Überarbeiten':'Feedback ausstehend'}</span></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Area status */}
         {areaStats.length>0&&(
           <>
             <div style={{fontSize:'var(--text-md)',fontWeight:700,marginBottom:'var(--sp3)',color:'var(--ink)'}}>Bereichsstatus</div>
             <div className="area-grid" style={{marginBottom:'var(--sp5)'}}>
               {areaStats.map(a=>{
                 const pct=a.total>0?Math.round(a.done/a.total*100):0
+                const ampel=a.krit>0?'var(--red)':a.offen===0?'var(--signal)':pct>70?'var(--signal)':'var(--amber)'
                 return (
-                  <div key={a.proj} className="area-card" onClick={()=>{setFProjekt(a.proj);setView('aufgaben')}}>
+                  <div key={a.proj} className="area-card" onClick={()=>{setFProjekt(a.proj);setView('aufgaben')}} style={{borderTop:`2px solid ${ampel}`}}>
                     <div className="area-name" title={a.proj}>{a.proj}</div>
                     <div className="area-stats">
                       {a.offen} offen{a.krit>0&&<span style={{color:'var(--red)',marginLeft:'var(--sp2)',fontWeight:700}}>· {a.krit} kritisch</span>}
                     </div>
-                    <div className="area-bar">
-                      <div className="area-bar-fill" style={{width:`${pct}%`,background:a.krit>0?'var(--red)':a.offen===0?'var(--signal)':'var(--slate)'}}/>
-                    </div>
+                    <div className="area-bar"><div className="area-bar-fill" style={{width:`${pct}%`,background:ampel}}/></div>
                   </div>
                 )
               })}
             </div>
           </>
         )}
+
+        {/* Launch Readiness Checkliste */}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
+          <div style={{fontSize:'var(--text-md)',fontWeight:700,color:'var(--ink)'}}>Launch Readiness</div>
+          <div style={{display:'flex',alignItems:'center',gap:'var(--sp3)'}}>
+            <div style={{fontSize:'var(--text-sm)',color:readinessColor,fontWeight:700}}>{readinessDone}/{READINESS_ITEMS.length}</div>
+            <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>{readinessPct}%</div>
+          </div>
+        </div>
+        <div className="card" style={{marginBottom:'var(--sp5)'}}>
+          <div className="readiness-score-bar" style={{margin:'var(--sp3) var(--sp4) 0'}}>
+            <div className="readiness-score-fill" style={{width:`${readinessPct}%`,background:readinessColor}}/>
+          </div>
+          <div className="readiness-grid" style={{margin:'var(--sp3) var(--sp4) var(--sp4)'}}>
+            {READINESS_ITEMS.map(item=>(
+              <ReadinessItem key={item.id} item={item} checked={!!readiness[item.id]}
+                onToggle={()=>toggleReadiness(item.id)}
+                onLabelSave={(label)=>updateReadinessLabel(item.id,label)}/>
+            ))}
+          </div>
+        </div>
+
+        {/* Decision Queue — Decision → Task */}
+        {offeneEntscheidungen.length>0&&(
+          <div style={{marginBottom:'var(--sp5)'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
+              <div style={{fontSize:'var(--text-md)',fontWeight:700,color:'var(--ink)'}}>Entscheidungen</div>
+              <button className="btn btn-xs btn-secondary" onClick={()=>setView('entscheidungen')}>Alle ansehen</button>
+            </div>
+            <div className="card">
+              {offeneEntscheidungen.map((e,idx)=>(
+                <div key={e.id} className="decision-queue-item">
+                  <div className="dq-index">{String(idx+1).padStart(2,'0')}</div>
+                  <div className="dq-body">
+                    <div className="dq-titel">{e.titel}</div>
+                    <div className="dq-meta">{e.projekt} · {fmtDate(e.datum)}{e.naechster_schritt&&<span style={{color:'var(--signal)'}}> · → {e.naechster_schritt}</span>}</div>
+                  </div>
+                  <div className="dq-actions">
+                    <button className="btn btn-xs btn-signal"
+                      title="Folgeaufgabe aus dieser Entscheidung erstellen"
+                      onClick={()=>{
+                        setEditA({titel:`Folgeaufgabe: ${e.titel}`,beschreibung:`Aus Entscheidung vom ${fmtDate(e.datum)}: ${e.naechster_schritt||e.begruendung}`,person:aktiv,projekt:e.projekt,prioritaet:'Hoch',status:'Offen',deadline:'',ergebnis:'',blocker:'',nummer:null,phase:'',sortierung:0,ist_hauptaufgabe:false,parent_id:null,completed_at:null,id:'',created_at:'',updated_at:'',freigabe:''} as unknown as Aufgabe)
+                        setModal('aufgabe')
+                      }}>+ Aufgabe</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Brand Readiness */}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
+          <div style={{fontSize:'var(--text-md)',fontWeight:700,color:'var(--ink)'}}>Brand Readiness</div>
+          <div style={{display:'flex',alignItems:'center',gap:'var(--sp3)'}}>
+            <div style={{fontSize:'var(--text-sm)',color:brandColor,fontWeight:700}}>{brandDone}/{BRAND_ITEMS.length}</div>
+            <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>{brandPct}%</div>
+          </div>
+        </div>
+        <div className="card" style={{marginBottom:'var(--sp5)'}}>
+          <div className="readiness-score-bar" style={{margin:'var(--sp3) var(--sp4) 0'}}>
+            <div className="readiness-score-fill" style={{width:`${brandPct}%`,background:brandColor}}/>
+          </div>
+          <div className="readiness-grid" style={{margin:'var(--sp3) var(--sp4) var(--sp4)'}}>
+            {BRAND_ITEMS.map(item=>(
+              <ReadinessItem key={item.id} item={item} checked={!!brandReadiness[item.id]}
+                onToggle={()=>toggleBrandReadiness(item.id)}
+                onLabelSave={(label)=>updateBrandLabel(item.id,label)}/>
+            ))}
+          </div>
+        </div>
+
+        {/* Risk Log */}
+        <RiskLog risiken={risiken} aktiv={aktiv} onAdd={addRisiko} onDel={delRisiko}/>
 
         {/* Team */}
         <div style={{fontSize:'var(--text-md)',fontWeight:700,marginBottom:'var(--sp3)',color:'var(--ink)'}}>Team</div>
@@ -786,7 +1264,14 @@ export default function App() {
               <div className="team-card" key={p.name}>
                 <div className="team-card-head">
                   <div><div className="team-card-name" style={{color:PERSON_HEX[p.name]}}>{p.name}</div><div className="team-card-role">{p.role}</div></div>
-                  <div className="team-card-stats"><div style={{fontWeight:700}}>{pPct}%</div><div>{pA.length} offen</div></div>
+                  <div className="team-card-stats">
+                    <div style={{fontWeight:700}}>{pPct}%</div>
+                    <div style={{display:'flex',alignItems:'center',gap:'var(--sp1)'}}>
+                      <span>{pA.length} offen</span>
+                      {wipWarn(p.name)==='rot'&&<span className="wip-warning">Überladen</span>}
+                      {wipWarn(p.name)==='gelb'&&<span className="wip-warning" style={{background:'var(--amber-bg)',color:'var(--amber)'}}>Voll</span>}
+                    </div>
+                  </div>
                 </div>
                 <div className="metric-bar" style={{margin:'0 var(--sp4) var(--sp1)',borderRadius:1}}>
                   <div className="metric-bar-fill" style={{width:`${pPct}%`,background:PERSON_HEX[p.name]}}/>
@@ -802,7 +1287,7 @@ export default function App() {
         {/* Activity Log */}
         {activity.length>0&&(
           <div className="card">
-            <div className="cockpit-section-lbl">Letzte Aktivität</div>
+            <div className="section-label">Letzte Aktivität</div>
             {activity.slice(0,8).map(a=>(
               <div key={a.id} className="activity-item">
                 <div className="activity-dot" style={{background:PERSON_HEX[a.person]||'var(--muted)'}}/>
@@ -810,6 +1295,250 @@ export default function App() {
                   <span style={{fontWeight:600,color:PERSON_HEX[a.person]||'var(--slate)'}}>{a.person}</span>{' '}hat <em>{a.entity_titel}</em> {a.action}
                 </div>
                 <div className="activity-time">{new Date(a.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Notification Center ─────────────────────────────────────────────────────
+  function NotificationCenter() {
+    const unread = notifications.filter(n=>!n.gelesen).length
+    const markAllRead = async() => {
+      setNotifications(prev=>prev.map(n=>({...n,gelesen:true})))
+      setLastSeen(new Date().toISOString())
+      const ids=notifications.filter(n=>!n.gelesen).map(n=>n.id)
+      if(ids.length>0) await supabase.from('notifications').update({gelesen:true}).in('id',ids)
+    }
+    const typIcon=(t:string)=>{
+      if(t==='kommentar') return '💬'
+      if(t==='mention') return '👋'
+      if(t==='zuweisung') return '✅'
+      if(t==='aufgabe_neu') return '🆕'
+      return '📌'
+    }
+    return (
+      <div style={{position:'relative',display:'inline-block'}}>
+        <button
+          onClick={()=>{setNotifOpen(o=>!o);if(!notifOpen)markAllRead()}}
+          style={{width:36,height:36,borderRadius:'50%',border:'1px solid var(--border2)',background:unread>0?'var(--ink)':'rgba(255,255,255,0.7)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',position:'relative',transition:'all var(--anim-micro)',backdropFilter:'blur(8px)'}}>
+          <svg style={{width:15,height:15,stroke:unread>0?'#fff':'var(--mid)'}} viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+          {unread>0&&<div style={{position:'absolute',top:-3,right:-3,width:16,height:16,borderRadius:'50%',background:'var(--red)',border:'2px solid white',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff',fontFamily:'var(--font-mono)'}}>{unread>9?'9+':unread}</div>}
+        </button>
+        {notifOpen&&(
+          <>
+            <div style={{position:'fixed',inset:0,zIndex:499}} onClick={()=>setNotifOpen(false)}/>
+            <div style={{position:'absolute',top:44,right:0,width:340,background:'rgba(255,255,255,0.95)',backdropFilter:'blur(28px)',border:'1px solid rgba(255,255,255,0.8)',borderRadius:'var(--r-2xl)',boxShadow:'var(--sh-xl)',zIndex:500,overflow:'hidden',animation:'scaleIn 0.18s cubic-bezier(0.34,1.56,0.64,1)'}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'var(--sp4) var(--sp5) var(--sp3)',borderBottom:'1px solid var(--border)'}}>
+                <div style={{fontFamily:'var(--font-mono)',fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.13em'}}>Benachrichtigungen</div>
+                {notifications.length>0&&<button onClick={markAllRead} style={{fontSize:'var(--text-xs)',color:'var(--signal)',background:'none',border:'none',cursor:'pointer',fontFamily:'var(--font-mono)',fontWeight:600}}>Alle gelesen</button>}
+              </div>
+              <div style={{maxHeight:400,overflowY:'auto'}}>
+                {notifications.length===0&&<div style={{padding:'var(--sp8)',textAlign:'center',fontSize:'var(--text-sm)',color:'var(--muted)'}}>Keine Benachrichtigungen</div>}
+                {notifications.slice(0,20).map(n=>(
+                  <div key={n.id} style={{display:'flex',gap:'var(--sp3)',padding:'var(--sp3) var(--sp4)',borderBottom:'1px solid var(--border)',background:n.gelesen?'transparent':'rgba(62,111,90,0.04)',transition:'background var(--anim-micro)',cursor:n.entity_id?'pointer':'default'}}
+                    onClick={()=>{if(n.entity_id){const a=aufgaben.find(x=>x.id===n.entity_id);if(a)setFlyout(a)};setNotifOpen(false)}}>
+                    <div style={{fontSize:16,flexShrink:0,marginTop:1}}>{typIcon(n.typ)}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:'var(--text-sm)',fontWeight:n.gelesen?400:600,color:'var(--ink)',marginBottom:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{n.titel}</div>
+                      <div style={{fontSize:'var(--text-xs)',color:'var(--mid)',lineHeight:1.4}}>{n.nachricht}</div>
+                      <div style={{fontSize:10,color:'var(--muted)',marginTop:2,fontFamily:'var(--font-mono)'}}>{new Date(n.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
+                    </div>
+                    {!n.gelesen&&<div style={{width:6,height:6,borderRadius:'50%',background:'var(--signal)',flexShrink:0,marginTop:5}}/>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
+
+  // ── Command Center (Cmd+K) ──────────────────────────────────────────────────
+  function CommandCenter() {
+    const [q,setQ]=useState(cmdQuery)
+    const ref=useRef<HTMLInputElement>(null)
+    useEffect(()=>{ ref.current?.focus() },[])
+
+    const results:{type:string;item:Aufgabe|Entscheidung|DesignIdee|Datei;title:string;sub:string}[]=[]
+    if(q.trim().length>0) {
+      const ql=q.toLowerCase()
+      aufgaben.filter(a=>a.titel.toLowerCase().includes(ql)||a.beschreibung?.toLowerCase().includes(ql)).slice(0,4).forEach(a=>
+        results.push({type:'aufgabe',item:a,title:a.titel,sub:`${a.person} · ${a.projekt} · ${a.status}`}))
+      entscheid.filter(e=>e.titel.toLowerCase().includes(ql)).slice(0,3).forEach(e=>
+        results.push({type:'entscheidung',item:e,title:e.titel,sub:`${e.projekt} · ${fmtDate(e.datum)}`}))
+      ideen.filter(i=>i.titel.toLowerCase().includes(ql)).slice(0,3).forEach(i=>
+        results.push({type:'design',item:i,title:i.titel,sub:`${i.kategorie} · ${i.freigabe}`}))
+      dateien.filter(d=>d.name.toLowerCase().includes(ql)).slice(0,2).forEach(d=>
+        results.push({type:'datei',item:d,title:d.name,sub:d.projekt}))
+    }
+
+    const go=(r:typeof results[0])=>{
+      if(r.type==='aufgabe'){setFlyout(r.item as Aufgabe)}
+      if(r.type==='entscheidung'){setView('entscheidungen')}
+      if(r.type==='design'){setDesignFlyout(r.item as DesignIdee);setView('design')}
+      if(r.type==='datei'){setView('dateien')}
+      setCmdOpen(false); setCmdQuery('')
+    }
+
+    const typeIcon=(t:string)=>{
+      if(t==='aufgabe') return Ico.aufg
+      if(t==='entscheidung') return Ico.decide
+      if(t==='design') return Ico.design
+      return Ico.files
+    }
+
+    return (
+      <div className="cmd-overlay" onClick={e=>e.target===e.currentTarget&&setCmdOpen(false)}>
+        <div className="cmd-modal">
+          <div className="cmd-input-wrap">
+            <svg style={{width:18,height:18,color:'var(--muted)',flexShrink:0}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input ref={ref} className="cmd-input" placeholder="Suchen…" value={q}
+              onChange={e=>setQ(e.target.value)}
+              onKeyDown={e=>{if(e.key==='Escape'){setCmdOpen(false);setCmdQuery('')}}}/>
+            <span className="cmd-esc">esc</span>
+          </div>
+          <div className="cmd-results">
+            {q.trim()===''&&(
+              <div>
+                <div className="cmd-section-hdr">Schnellzugriff</div>
+                {[{label:'Neue Aufgabe',action:()=>{setEditA(null);setModal('aufgabe');setCmdOpen(false)},icon:Ico.aufg},
+                  {label:'Launch Plan',action:()=>{setView('plan');setCmdOpen(false)},icon:Ico.plan},
+                  {label:'Design Studio',action:()=>{setView('design');setCmdOpen(false)},icon:Ico.design},
+                  {label:'Neue Entscheidung',action:()=>{setModal('entscheidung');setCmdOpen(false)},icon:Ico.decide},
+                ].map((item,i)=>(
+                  <div key={i} className="cmd-item" onClick={item.action}>
+                    <div className="cmd-item-icon">{item.icon}</div>
+                    <div className="cmd-item-body"><div className="cmd-item-title">{item.label}</div></div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {q.trim()!==''&&results.length===0&&<div className="cmd-empty">Keine Ergebnisse für „{q}"</div>}
+            {results.length>0&&(
+              <div>
+                <div className="cmd-section-hdr">{results.length} Ergebnisse</div>
+                {results.map((r,i)=>(
+                  <div key={i} className="cmd-item" onClick={()=>go(r)}>
+                    <div className="cmd-item-icon">{typeIcon(r.type)}</div>
+                    <div className="cmd-item-body">
+                      <div className="cmd-item-title">{r.title}</div>
+                      <div className="cmd-item-sub">{r.sub}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Focus Mode ───────────────────────────────────────────────────────────────
+  function FocusMode({task}:{task:Aufgabe}) {
+    return (
+      <div className="focus-overlay" onClick={e=>e.target===e.currentTarget&&setFocusTask(null)}>
+        <div style={{position:'relative'}}>
+          <button className="focus-close" onClick={()=>setFocusTask(null)}>Beenden · Esc</button>
+          <div className="focus-card">
+            <div className="focus-eyebrow">
+              <div style={{width:5,height:5,borderRadius:'50%',background:'var(--signal)'}}/>
+              Deep Work · {task.person} · {task.projekt}
+            </div>
+            <div className="focus-title">{task.titel}</div>
+            {task.ergebnis&&(
+              <>
+                <div className="focus-result-lbl">Gewünschtes Ergebnis</div>
+                <div className="focus-result">{task.ergebnis}</div>
+              </>
+            )}
+            {task.blocker&&(
+              <div style={{padding:'var(--sp3) var(--sp4)',background:'rgba(143,62,54,0.15)',borderRadius:'var(--r-xl)',borderLeft:'2px solid var(--red)',marginBottom:'var(--sp4)'}}>
+                <div style={{fontFamily:'var(--font-mono)',fontSize:'10px',fontWeight:700,color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:4}}>Blocker</div>
+                <div style={{fontSize:'var(--text-base)',color:'rgba(255,255,255,0.65)'}}>{task.blocker}</div>
+              </div>
+            )}
+            <div style={{display:'flex',gap:'var(--sp2)'}}>
+              <button className="btn btn-signal btn-sm" onClick={()=>{toggleStatus(task);setFocusTask(null)}}>Als erledigt markieren</button>
+              <button className="btn btn-sm" style={{background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.6)',border:'1px solid rgba(255,255,255,0.10)'}} onClick={()=>{setFlyout(task);setFocusTask(null)}}>Details öffnen</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── ReadinessItem — editable label ─────────────────────────────────────────
+  function ReadinessItem({item,checked,onToggle,onLabelSave}:{item:{id:string;label:string};checked:boolean;onToggle:()=>void;onLabelSave:(l:string)=>void}) {
+    const [editing,setEditing]=useState(false)
+    const [draft,setDraft]=useState(item.label)
+    const save=()=>{ onLabelSave(draft); setEditing(false) }
+    return (
+      <div className={`readiness-item${checked?' done':''}`}>
+        <button className={`readiness-check${checked?' done':''}`} onClick={onToggle}>
+          {checked&&<svg style={{width:9,height:9}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+        </button>
+        {editing ? (
+          <div style={{flex:1,display:'flex',gap:'var(--sp1)',alignItems:'center'}} onClick={e=>e.stopPropagation()}>
+            <input autoFocus className="form-input" style={{fontSize:'var(--text-sm)',padding:'2px var(--sp2)',flex:1}}
+              value={draft} onChange={e=>setDraft(e.target.value)}
+              onKeyDown={e=>{if(e.key==='Enter')save();if(e.key==='Escape')setEditing(false)}}/>
+            <button className="btn btn-xs btn-signal" onClick={save}>✓</button>
+            <button className="btn btn-xs btn-secondary" onClick={()=>setEditing(false)}>✕</button>
+          </div>
+        ) : (
+          <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'space-between',gap:'var(--sp1)'}}>
+            <span className="readiness-label" onClick={onToggle}>{item.label}</span>
+            <button className="icon-btn" style={{width:20,height:20,flexShrink:0}}
+              onClick={e=>{e.stopPropagation();setDraft(item.label);setEditing(true)}}>{Ico.edit}</button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Risk Log Component ──────────────────────────────────────────────────────
+  function RiskLog({risiken,aktiv,onAdd,onDel}:{risiken:Risiko[];aktiv:string;onAdd:(t:string,i:string,o:string,g:string)=>void;onDel:(id:string)=>void}) {
+    const [show,setShow]=useState(false)
+    const [f,setF]=useState({titel:'',impact:'Hoch',owner:aktiv,gegenmasnahme:''})
+    const impactColor=(i:string)=>i==='Hoch'?'var(--red)':i==='Mittel'?'var(--amber)':'var(--signal)'
+    const statusColor=(s:string)=>s==='Eingetreten'?'var(--red)':s==='Offen'?'var(--amber)':'var(--muted)'
+    return (
+      <div style={{marginBottom:'var(--sp5)'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
+          <div style={{fontSize:'var(--text-md)',fontWeight:700,color:'var(--ink)'}}>Risiken</div>
+          <button className="btn btn-xs btn-secondary" onClick={()=>setShow(s=>!s)}>{show?'Abbrechen':'+ Risiko'}</button>
+        </div>
+        {show&&(
+          <div className="card" style={{marginBottom:'var(--sp3)',padding:'var(--sp4)'}}>
+            <div className="form-group"><label className="form-label">Risiko *</label><input className="form-input" style={{fontSize:'var(--text-sm)'}} placeholder="z.B. Packaging Lieferzeit zu lang" value={f.titel} onChange={e=>setF(p=>({...p,titel:e.target.value}))}/></div>
+            <div className="form-row">
+              <div className="form-group"><label className="form-label">Impact</label><select className="form-input" style={{fontSize:'var(--text-sm)'}} value={f.impact} onChange={e=>setF(p=>({...p,impact:e.target.value}))}><option>Hoch</option><option>Mittel</option><option>Niedrig</option></select></div>
+              <div className="form-group"><label className="form-label">Owner</label><select className="form-input" style={{fontSize:'var(--text-sm)'}} value={f.owner} onChange={e=>setF(p=>({...p,owner:e.target.value}))}>{PERSONEN.map(p=><option key={p.name}>{p.name}</option>)}</select></div>
+            </div>
+            <div className="form-group"><label className="form-label">Gegenmaßnahme</label><input className="form-input" style={{fontSize:'var(--text-sm)'}} placeholder="Was tun wenn es eintritt?" value={f.gegenmasnahme} onChange={e=>setF(p=>({...p,gegenmasnahme:e.target.value}))}/></div>
+            <div style={{display:'flex',gap:'var(--sp2)'}}>
+              <button className="btn btn-primary btn-sm" onClick={()=>{if(!f.titel.trim())return;onAdd(f.titel,f.impact,f.owner,f.gegenmasnahme);setF({titel:'',impact:'Hoch',owner:aktiv,gegenmasnahme:''});setShow(false)}}>Speichern</button>
+              <button className="btn btn-secondary btn-sm" onClick={()=>setShow(false)}>Abbrechen</button>
+            </div>
+          </div>
+        )}
+        {risiken.length===0&&!show&&<div className="card"><div className="empty"><div className="empty-title">Keine Risiken erfasst</div><div className="empty-sub">Füge bekannte Risiken hinzu bevor sie eintreten</div></div></div>}
+        {risiken.length>0&&(
+          <div className="card">
+            {risiken.map(r=>(
+              <div key={r.id} style={{display:'flex',alignItems:'flex-start',gap:'var(--sp3)',padding:'var(--sp3) var(--sp4)',borderBottom:'1px solid var(--border)'}}>
+                <div style={{width:8,height:8,borderRadius:'50%',background:impactColor(r.impact),flexShrink:0,marginTop:5}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:'var(--text-base)',fontWeight:500,color:'var(--ink)',marginBottom:2}}>{r.titel}</div>
+                  {r.gegenmasnahme&&<div style={{fontSize:'var(--text-xs)',color:'var(--mid)',marginBottom:2}}>→ {r.gegenmasnahme}</div>}
+                  <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>{r.owner} · Impact: <span style={{color:impactColor(r.impact),fontWeight:600}}>{r.impact}</span> · <span style={{color:statusColor(r.status)}}>{r.status}</span></div>
+                </div>
+                <button className="icon-btn del" onClick={()=>onDel(r.id)} style={{flexShrink:0}}>{Ico.trash}</button>
               </div>
             ))}
           </div>
@@ -827,6 +1556,7 @@ export default function App() {
     const [newPerson, setNewPerson] = useState<PersonName>('Alexander')
     const [newDeadline, setNewDeadline] = useState('')
     const [newErgebnis, setNewErgebnis] = useState('')
+    const [newNummer, setNewNummer] = useState('')
     const [addingH, setAddingH] = useState(false)
 
     const addHauptaufgabe = async () => {
@@ -834,17 +1564,17 @@ export default function App() {
       if(!newDeadline) return
       if(!newErgebnis.trim()) return
       setAddingH(true)
-      const nextNr = Math.max(0,...hauptaufgaben.map(a=>a.nummer||0)) + 1
+      const nummerWert = newNummer ? parseInt(newNummer) : Math.max(0,...hauptaufgaben.map(a=>a.nummer||0)) + 1
       const nextSort = Math.max(0,...hauptaufgaben.filter(a=>a.phase===newPhase).map(a=>a.sortierung||0)) + 1
       await supabase.from('aufgaben').insert({
-        nummer: nextNr, titel: newTitel.trim(), person: newPerson,
+        nummer: nummerWert, titel: newTitel.trim(), person: newPerson,
         projekt: 'Organisation', prioritaet: 'Hoch', status: 'Offen',
         deadline: newDeadline, ergebnis: newErgebnis.trim(),
         phase: newPhase, sortierung: nextSort,
         ist_hauptaufgabe: true, beschreibung: '', blocker: '',
         parent_id: null, completed_at: null
       })
-      setNewTitel(''); setNewDeadline(''); setNewErgebnis('')
+      setNewTitel(''); setNewDeadline(''); setNewErgebnis(''); setNewNummer('')
       setAddingH(false); setShowAddPhase(false)
       toast('Hauptaufgabe hinzugefügt', 'success')
     }
@@ -874,6 +1604,10 @@ export default function App() {
                 </select>
               </div>
               <div className="form-group" style={{marginBottom:0}}>
+                <label className="form-label">Nummer</label>
+                <input type="number" min="1" className="form-input" placeholder="z.B. 01" value={newNummer} onChange={e=>setNewNummer(e.target.value)}/>
+              </div>
+              <div className="form-group" style={{marginBottom:0}}>
                 <label className="form-label">Deadline *</label>
                 <input type="date" className="form-input" value={newDeadline} onChange={e=>setNewDeadline(e.target.value)}/>
               </div>
@@ -895,7 +1629,6 @@ export default function App() {
         )}
         <div className="metric-bar" style={{height:6,borderRadius:'var(--r-sm)',marginBottom:'var(--sp6)'}}>
           <div className="metric-bar-fill" style={{width:`${gesamtPct}%`,background:'var(--signal)',height:6,borderRadius:'var(--r-sm)'}}/>
-        </div>
         </div>
         {loading?<>{Array.from({length:3}).map((_,i)=><div key={i} className="card" style={{padding:'var(--sp4)',marginBottom:'var(--sp4)'}}><SkeletonList rows={3}/></div>)}</>
           :phasen.map(phase=>{
@@ -1064,20 +1797,14 @@ export default function App() {
   ]
   const ap=PERSONEN.find(p=>p.name===aktiv)!
 
+  if(!authChecked) return <div style={{minHeight:'100vh',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}><div style={{fontSize:'var(--text-sm)',color:'var(--muted)'}}>Laden…</div></div>
+  if(!authed) return <LoginScreen onLogin={(name)=>{setAktiv(name);setAuthed(true)}}/>
+
   return (
     <div className="app">
       <aside className={`sidebar${sidebarOpen?' open':''}`}>
         <div className="sidebar-logo"><div className="sidebar-logo-name">Quadras</div><div className="sidebar-logo-sub">Founder Operating System</div></div>
-        <div className="person-block">
-          <div className="person-label">Aktive Person</div>
-          <div className="person-btns">
-            {PERSONEN.map(p=>(
-              <button key={p.name} className={`pbtn${aktiv===p.name?' active':''}`}
-                style={aktiv===p.name?{background:PERSON_HEX[p.name],borderColor:PERSON_HEX[p.name]}:{}}
-                onClick={()=>{setAktiv(p.name);setSidebarOpen(false)}}>{p.name[0]}</button>
-            ))}
-          </div>
-        </div>
+
         <nav className="nav">
           <div className="nav-section">Navigation</div>
           {navItems.map(n=>(
@@ -1093,6 +1820,10 @@ export default function App() {
           <div className="stat"><div className="stat-num">{offenGesamt}</div><div className="stat-label">Team</div></div>
           <div className="stat"><div className="stat-num" style={{color:ueberfaellig>0?'var(--red)':'var(--ink)'}}>{ueberfaellig}</div><div className="stat-label">Überfällig</div></div>
         </div>
+        <button style={{margin:'0 var(--sp4) var(--sp4)',padding:'var(--sp2)',borderRadius:'var(--r-sm)',border:'1px solid var(--border)',background:'none',color:'var(--muted)',fontSize:'var(--text-xs)',cursor:'pointer',fontFamily:'var(--font)',width:'calc(100% - var(--sp8))',textAlign:'center'}}
+          onClick={async()=>{await supabase.auth.signOut();setAuthed(false)}}>
+          Abmelden
+        </button>
       </aside>
 
       <main className="main">
@@ -1122,10 +1853,12 @@ export default function App() {
       {modal==='datei'&&<DateiModal/>}
       {modal==='design'&&<DesignModal/>}
       {modal==='confirm'&&<ConfirmModal/>}
+      {cmdOpen&&<CommandCenter/>}
+      {focusTask&&<FocusMode task={focusTask}/>}
 
       <div className="toast-container">
         {toasts.map(t=><div key={t.id} className={`toast${t.type==='success'?' success':t.type==='error'?' error':''}`}>{t.msg}</div>)}
       </div>
     </div>
-  )
-}
+    )
+  }
