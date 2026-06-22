@@ -641,7 +641,7 @@ textarea.form-input { resize: vertical; min-height: 76px; }
     --signal: #2E8B5C; --signal-bg: rgba(46,139,92,0.12);
     --red: #DC4A42; --red-bg: rgba(220,74,66,0.10);
     --amber: #D97706; --amber-bg: rgba(217,119,6,0.10); 
-    --blue: #3B82F6; --blue-bg: rgba(59,130,246,0.10);
+    --blue: #3B82F6; --blue-bg: rgba(59,130,246,0.10); 
   }
   body { background: linear-gradient(160deg, #0A0C10 0%, #0F1520 50%, #141C28 100%); }
   .sidebar { background: rgba(14,19,28,0.92); border: 1px solid rgba(255,255,255,0.055); }
