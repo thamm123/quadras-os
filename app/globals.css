@@ -423,6 +423,7 @@ button { cursor: pointer; }
 
 /* ── Cockpit grid ─────────────────────────────────────────── */
 .cockpit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp4); margin-bottom: var(--sp8); }
+.section-divider { height: 1px; background: var(--border2); margin: var(--sp6) 0; }
 
 /* ── Aufgabe items ────────────────────────────────────────── */
 .aufgabe {
@@ -669,9 +670,10 @@ textarea.form-input { resize: vertical; min-height: 76px; }
 .skeleton-title { height: 15px; width: 52%; margin-bottom: var(--sp2); }
 .skeleton-meta  { height: 10px; width: 36%; }
 .skeleton-card  { padding: var(--sp4) var(--sp5); border-bottom: 1px solid var(--border); }
+.skeleton-line  { height: 12px; width: 100%; margin-bottom: var(--sp2); }
 
 /* ── Empty ────────────────────────────────────────────────── */
-.empty { padding: 52px var(--sp6); text-align: center; }
+.empty { padding: 52px var(--sp6); text-align: center; display: flex; flex-direction: column; align-items: center; }
 .empty-icon { width: 32px; height: 32px; margin: 0 auto var(--sp3); color: var(--muted); }
 .empty-title { font-size: var(--text-md); font-weight: 600; color: var(--slate); margin-bottom: 4px; }
 .empty-sub { font-size: var(--text-sm); color: var(--muted); }
@@ -762,7 +764,8 @@ textarea.form-input { resize: vertical; min-height: 76px; }
 .kbd { display: inline-flex; align-items: center; padding: 1px 5px; border-radius: 4px; background: rgba(15,19,24,0.06); border: 1px solid var(--border2); font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--muted); line-height: 1.4; }
 
 /* ── WIP warning ──────────────────────────────────────────── */
-.wip-warning { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: var(--r-full); font-family: var(--font-mono); font-size: 10px; font-weight: 700; margin-left: var(--sp2); }
+.wip-warning { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: var(--r-full); font-family: var(--font-mono); font-size: 10px; font-weight: 700; margin-left: var(--sp2); background: var(--red-bg); color: var(--red); }
+.wip-warning.gelb { background: var(--amber-bg); color: var(--amber); }
 
 /* ── Toast ────────────────────────────────────────────────── */
 .toast-container { position: fixed; bottom: 100px; right: var(--sp6); z-index: 9999; display: flex; flex-direction: column; gap: var(--sp2); pointer-events: none; }
@@ -770,6 +773,7 @@ textarea.form-input { resize: vertical; min-height: 76px; }
 .toast.error { background: rgba(143,62,54,0.92); }
 .toast.success { background: rgba(62,111,90,0.92); }
 @keyframes toastIn { from { transform: translateY(10px) scale(0.94); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 /* ══════════════════════════════════════════════════════════
    MOBILE BOTTOM NAV — Glassmorphism Floating Pill
@@ -814,7 +818,7 @@ textarea.form-input { resize: vertical; min-height: 76px; }
 @media (max-width: 1200px) {
   .metrics-row { grid-template-columns: repeat(2,1fr); }
   .team-grid   { grid-template-columns: 1fr 1fr; }
-  .cockpit-grid{ grid-template-columns: 1fr; } 
+  .cockpit-grid{ grid-template-columns: 1fr; }
 }
 
 @media (max-width: 768px) {
@@ -823,6 +827,10 @@ textarea.form-input { resize: vertical; min-height: 76px; }
   .main        { margin-left: 0; padding: var(--sp5) var(--sp4) 120px; width: 100%; overflow-x: hidden; }
   .mobile-nav  { display: block; }
   .metrics-row { grid-template-columns: 1fr 1fr; gap: var(--sp2); }
+@media (max-width: 380px) {
+  .metrics-row { grid-template-columns: 1fr 1fr; gap: var(--sp1); }
+  .metric-num { font-size: var(--text-3xl) !important; }
+}
   .team-grid   { grid-template-columns: 1fr; }
   .design-grid { grid-template-columns: repeat(auto-fill,minmax(150px,1fr)); gap: var(--sp3); }
   .flyout,
@@ -833,7 +841,7 @@ textarea.form-input { resize: vertical; min-height: 76px; }
   .cockpit-hero { border-radius: var(--r-2xl); padding: var(--sp7) var(--sp5) var(--sp6); overflow: hidden; }
   .cockpit-name { font-size: var(--text-2xl); }
   .readiness-grid { grid-template-columns: 1fr; }
-  .mission-block { padding: var(--sp5) var(--sp5); border-radius: var(--r-xl); }
+  .mission-block { padding: var(--sp5) var(--sp5); border-radius: var(--r-xl); background: #1A2028; }
   .toast-container { bottom: 120px; right: var(--sp3); left: var(--sp3); }
   .toast { max-width: 100%; }
   .cmd-overlay { padding-top: 60px; padding-left: var(--sp3); padding-right: var(--sp3); }
@@ -844,3 +852,103 @@ textarea.form-input { resize: vertical; min-height: 76px; }
 /* Focus trigger hover */
 .aufgabe:hover .focus-trigger { opacity: 1 !important; }
 .c-signal { color: var(--signal); }
+
+/* ── Dark Mode ────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink:      #F4F1EC;
+    --slate:    #B8C0CC;
+    --mid:      #8A97A4;
+    --muted:    #5A6472;
+    --border:   rgba(244,241,236,0.08);
+    --border2:  rgba(244,241,236,0.12);
+    --border3:  rgba(244,241,236,0.18);
+    --bg:       #111318;
+    --bg2:      #1A1E24;
+    --bg3:      #222830;
+    --surface:  rgba(25,30,38,0.88);
+    --surface2: rgba(25,30,38,0.65);
+    --glass:    rgba(25,30,38,0.82);
+    --signal:     #4E9E7A;
+    --signal-bg:  rgba(78,158,122,0.12);
+    --red:        #C05A52;
+    --red-bg:     rgba(192,90,82,0.10);
+    --amber:      #C49A4A;
+    --amber-bg:   rgba(196,154,74,0.10);
+    --blue:       #5A82B6;
+    --blue-bg:    rgba(90,130,182,0.10);
+  }
+  body {
+    background:
+      radial-gradient(circle at 18% 0%, rgba(30,35,45,0.95), transparent 30%),
+      radial-gradient(circle at 82% 8%, rgba(50,60,75,0.4), transparent 33%),
+      linear-gradient(135deg, #0E1218 0%, #141820 48%, #1A2028 100%);
+  }
+  .sidebar {
+    background: rgba(18,22,30,0.88);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .card {
+    background: rgba(20,25,33,0.85);
+    border: 1px solid rgba(255,255,255,0.07);
+  }
+  .metric {
+    background: rgba(20,25,33,0.80);
+    border: 1px solid rgba(255,255,255,0.07);
+  }
+  .modal {
+    background: rgba(18,22,30,0.96);
+    border: 1px solid rgba(255,255,255,0.09);
+  }
+  .form-input {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.10);
+    color: var(--ink);
+  }
+  .form-input:focus {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.25);
+  }
+  .flyout, .design-flyout {
+    background: rgba(15,19,24,0.97);
+    border-left: 1px solid rgba(255,255,255,0.07);
+  }
+  .cmd-modal {
+    background: rgba(18,22,30,0.97);
+    border: 1px solid rgba(255,255,255,0.09);
+  }
+  .mobile-nav-inner {
+    background: rgba(18,22,30,0.92);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .btn-secondary {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.10);
+    color: var(--ink);
+  }
+  .btn-secondary:hover {
+    background: rgba(255,255,255,0.13);
+  }
+  .mission-block { background: #0E1218 !important; }
+  .chip {
+    background: rgba(255,255,255,0.07);
+    border-color: rgba(255,255,255,0.10);
+    color: var(--slate);
+  }
+  .chip:hover {
+    background: rgba(255,255,255,0.12);
+  }
+  .area-card {
+    background: rgba(20,25,33,0.80);
+    border: 1px solid rgba(255,255,255,0.07);
+  }
+  .team-card {
+    background: rgba(20,25,33,0.80);
+    border: 1px solid rgba(255,255,255,0.07);
+  }
+}
+
+/* ── Keyboard accessible focus ───────────────────────────── */
+.cmd-item:focus { background: rgba(15,19,24,0.07); outline: none; }
+.nav-item:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }
+.aufgabe:focus-within .a-actions { opacity: 1; }
