@@ -482,25 +482,32 @@ export default function App() {
         const {error}=await supabase.storage.from('kommentar-anhaenge').upload(fname,fileToUpload)
         if(!error){
           const {data}=supabase.storage.from('kommentar-anhaenge').getPublicUrl(fname)
-          anhang_url=data.publicUrl
-          anhang_name=fileToUpload.name
-          anhang_typ=fileToUpload.type.startsWith('image/')?'bild':'datei'
+          if(data?.publicUrl){
+            anhang_url=data.publicUrl
+            anhang_name=fileToUpload.name
+            anhang_typ=fileToUpload.type.startsWith('image/')?'bild':'datei'
+          }
         } else {
-          toast('Datei-Upload fehlgeschlagen','error')
+          console.error('Upload error:', error)
+          toast('Upload fehlgeschlagen: '+error.message,'error')
         }
       }
       // Now add to UI with correct URL
       const payload={aufgabe_id:a.id,person:aktiv,kommentar:commentText,anhang_url,anhang_name,anhang_typ}
       setComments(prev=>[...prev,{...payload,id:'tmp-'+Date.now(),created_at:new Date().toISOString()}])
-      await supabase.from('aufgabe_comments').insert(payload)
+      const {data:newC}=await supabase.from('aufgabe_comments').insert(payload).select().single()
+      if(newC){
+        // Replace optimistic entry with real DB entry (has correct id)
+        setComments(prev=>prev.map(c=>c.id.startsWith('tmp-')?newC:c))
+      }
       // Notifications
-      await notifyAll(aktiv,'kommentar',a.titel,`${aktiv}: ${newComment.trim().substring(0,60)}${a.deadline?' · fällig '+fmtDate(a.deadline):''}`,a.id,'aufgabe')
+      await notifyAll(aktiv,'kommentar',a.titel,`${aktiv}: ${commentText.substring(0,60)}${a.deadline?' · fällig '+fmtDate(a.deadline):''}`,a.id,'aufgabe')
       // @mention detection
-      const mentions=newComment.match(/@(Alexander|Norman|Anna)/g)||[]
+      const mentions=commentText.match(/@(Alexander|Norman|Anna)/g)||[]
       for(const m of mentions){
         const name=m.slice(1) as PersonName
         if(name!==aktiv){
-          await supabase.from('notifications').insert({fuer:name,von:aktiv,typ:'mention',titel:a.titel,nachricht:`${aktiv} hat dich erwähnt: ${newComment.trim().substring(0,80)}`,entity_id:a.id,entity_typ:'aufgabe'})
+          await supabase.from('notifications').insert({fuer:name,von:aktiv,typ:'mention',titel:a.titel,nachricht:`${aktiv} hat dich erwähnt: ${commentText.substring(0,80)}`,entity_id:a.id,entity_typ:'aufgabe'})
         }
       }
       await logActivity('aufgabe',a.id,a.titel,'kommentiert',aktiv)
@@ -510,7 +517,7 @@ export default function App() {
       if(!newSubtask.trim()||addingSub) return
       setAddingSub(true)
       await supabase.from('aufgaben').insert({
-        titel:newSubtask.trim(),person:aktiv,projekt:a.projekt,
+        titel:newSubtask.trim(),person:aktiv,personen:[aktiv],projekt:a.projekt,
         prioritaet:'Normal',status:'Offen',parent_id:a.id,
         ergebnis:'',beschreibung:'',phase:'',sortierung:0,ist_hauptaufgabe:false,
         deadline:null,blocker:''
@@ -609,7 +616,10 @@ export default function App() {
                     {c.anhang_url&&c.anhang_url.startsWith('https://')&&(
                       <div style={{marginTop:'var(--sp2)'}}>
                         {c.anhang_typ==='bild'
-                          ?<img src={c.anhang_url} alt={c.anhang_name} style={{maxWidth:'100%',borderRadius:'var(--r-md)',maxHeight:200,objectFit:'cover',cursor:'pointer'}} onClick={()=>window.open(c.anhang_url,'_blank')}/>
+                          ?<img src={c.anhang_url} alt={c.anhang_name||'Bild'} 
+                            style={{maxWidth:'100%',borderRadius:'var(--r-md)',maxHeight:240,objectFit:'cover',cursor:'pointer',display:'block',marginTop:2}}
+                            onClick={()=>window.open(c.anhang_url,'_blank')}
+                            onError={e=>{(e.target as HTMLImageElement).style.display='none'}}/>
                           :<a href={c.anhang_url} target="_blank" rel="noopener noreferrer" style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:'var(--text-xs)',color:'var(--signal)',fontWeight:600,textDecoration:'none',padding:'3px 8px',background:'var(--signal-bg)',borderRadius:'var(--r-sm)'}}>
                             {Ico.file} {c.anhang_name}
                           </a>}
@@ -1409,7 +1419,8 @@ export default function App() {
     return (
       <div style={{position:'relative',display:'inline-block'}}>
         <button ref={bellRef}
-          onClick={()=>{
+          onClick={e=>{
+            e.stopPropagation()
             if(bellRef.current){
               const r=bellRef.current.getBoundingClientRect()
               setNotifPos({top:r.bottom+8,right:Math.max(16,window.innerWidth-r.right)})
