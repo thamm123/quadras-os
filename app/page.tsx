@@ -1424,7 +1424,7 @@ export default function App() {
         <div className="cockpit-hero">
           <div className="cockpit-role"><div className="cockpit-dot" style={{background:PERSON_HEX[aktiv]}}/>{ap.role}</div>
           <div className="cockpit-name">{aktiv}</div>
-          <div className="cockpit-meta">{new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · KW {Math.ceil((new Date().getDate()+new Date(new Date().getFullYear(),new Date().getMonth(),1).getDay())/7)}</div>
+          <div className="cockpit-meta">{new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · KW {(()=>{const d=new Date();const dayNum=d.getDay()||7;d.setDate(d.getDate()+4-dayNum);const yearStart=new Date(d.getFullYear(),0,1);return Math.ceil((((d.getTime()-yearStart.getTime())/86400000)+1)/7)})()}</div>
           {(()=>{const todayTasks=aufgaben.filter(a=>(a.personen||[a.person]).includes(aktiv)&&a.deadline===t&&a.status!=='Erledigt');return todayTasks.length>0&&(
             <div style={{marginTop:'var(--sp4)',paddingTop:'var(--sp4)',borderTop:'1px solid rgba(255,255,255,0.08)'}}>
               <div style={{fontFamily:'var(--font-mono)',fontSize:10,color:'rgba(255,255,255,0.3)',textTransform:'uppercase',letterSpacing:'0.12em',marginBottom:'var(--sp2)'}}>Heute fällig — {todayTasks.length} Aufgabe{todayTasks.length>1?'n':''}</div>
@@ -2069,7 +2069,7 @@ export default function App() {
         </div>
       </nav>
 
-      {flyout&&<TaskFlyout/>} 
+      {flyout&&<TaskFlyout/>}
       {designFlyout&&<DesignStudioFlyout/>}
       {modal==='aufgabe'&&<AufgabeModal/>}
       {modal==='entscheidung'&&<EntscheidungModal/>}
