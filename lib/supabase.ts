@@ -57,7 +57,7 @@ export type Comment = {
 export type Notification = {
   id: string; fuer: string; von: string; typ: string; titel: string
   nachricht: string; entity_id: string|null; entity_typ: string
-  gelesen: boolean; created_at: string 
+  gelesen: boolean; created_at: string
 }
 
 // Helpers
