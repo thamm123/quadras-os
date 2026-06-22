@@ -8,7 +8,7 @@ export const metadata: Metadata = {
     'apple-mobile-web-app-capable': 'yes',
     'apple-mobile-web-app-status-bar-style': 'default',
     'mobile-web-app-capable': 'yes',
-  }, 
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
