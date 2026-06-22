@@ -814,7 +814,7 @@ textarea.form-input { resize: vertical; min-height: 76px; }
 @media (max-width: 1200px) {
   .metrics-row { grid-template-columns: repeat(2,1fr); }
   .team-grid   { grid-template-columns: 1fr 1fr; }
-  .cockpit-grid{ grid-template-columns: 1fr; }
+  .cockpit-grid{ grid-template-columns: 1fr; } 
 }
 
 @media (max-width: 768px) {
