@@ -1,11 +1,11 @@
-'use client'
+'use client' 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   supabase, PERSONEN, PROJEKTE, PRIOS, STATUSES,
   DESIGN_KATS, DESIGN_STATUS, FREIGABE_STATUS, PERSON_HEX, PRIO_HEX,
-  Aufgabe, Entscheidung, Datei, DesignIdee, Comment, FeedbackEntry,
+  Aufgabe, Entscheidung, Datei, DesignIdee, Comment, FeedbackEntry, Notification,
   todayStr, in48hStr, in7dStr, isOverdue, isSoon, safeDate, fmtDate,
-  logActivity, type PersonName
+  logActivity, notifyAll, type PersonName
 } from '../lib/supabase'
 
 type View = 'heute'|'plan'|'aufgaben'|'design'|'dateien'|'entscheidungen'
@@ -148,6 +148,9 @@ export default function App() {
   const [brandReadiness, setBrandReadiness] = useState<Record<string,boolean>>({})
   const [risiken, setRisiken] = useState<Risiko[]>([])
   const [settingsLoaded, setSettingsLoaded] = useState(false)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [lastSeen, setLastSeen] = useState<string>(new Date().toISOString())
 
 
 
@@ -165,6 +168,13 @@ export default function App() {
     if(rs.data) setRisiken(rs.data)
     setSettingsLoaded(true)
   },[])
+
+  const loadNotifications = useCallback(async()=>{
+    const {data}=await supabase.from('notifications')
+      .select('*').or(`fuer.eq.${aktiv},fuer.eq.Alle`)
+      .order('created_at',{ascending:false}).limit(30)
+    if(data) setNotifications(data)
+  },[aktiv])
 
   useEffect(()=>{ loadSettings() },[loadSettings])
 
@@ -216,11 +226,16 @@ export default function App() {
 
   useEffect(()=>{ if(authed) loadAll() },[loadAll,authed])
   useEffect(()=>{ if(authed) loadSettings() },[loadSettings,authed])
+  useEffect(()=>{ if(authed) loadNotifications() },[loadNotifications,authed])
 
   // Optimised realtime — diff injection
   useEffect(()=>{
     const ch=supabase.channel('quadras-v7')
       .on('postgres_changes',{event:'*',schema:'public',table:'team_settings'},()=>loadSettings())
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications'},({new:n})=>{
+        const notif=n as Notification
+        if(notif.fuer===aktiv||notif.fuer==='Alle') setNotifications(prev=>[notif,...prev])
+      })
       .on('postgres_changes',{event:'*',schema:'public',table:'risiken'},()=>{
         supabase.from('risiken').select('*').order('created_at',{ascending:false}).then(({data})=>{if(data)setRisiken(data)})
       })
@@ -446,12 +461,37 @@ export default function App() {
       })
     },[a.id])
 
+    const [commentFile, setCommentFile] = useState<File|null>(null)
+    const commentFileRef = useRef<HTMLInputElement>(null)
+
     const addComment=async()=>{
-      if(!newComment.trim()) return
-      const payload={aufgabe_id:a.id,person:aktiv,kommentar:newComment.trim()}
+      if(!newComment.trim()&&!commentFile) return
+      let anhang_url='', anhang_name='', anhang_typ=''
+      if(commentFile){
+        const fname=`${Date.now()}_${commentFile.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`
+        const {error}=await supabase.storage.from('kommentar-anhaenge').upload(fname,commentFile)
+        if(!error){
+          const {data}=supabase.storage.from('kommentar-anhaenge').getPublicUrl(fname)
+          anhang_url=data.publicUrl; anhang_name=commentFile.name
+          anhang_typ=commentFile.type.startsWith('image/')?'bild':'datei'
+        }
+        setCommentFile(null)
+      }
+      const payload={aufgabe_id:a.id,person:aktiv,kommentar:newComment.trim(),anhang_url,anhang_name,anhang_typ}
       setComments(prev=>[...prev,{...payload,id:'tmp-'+Date.now(),created_at:new Date().toISOString()}])
       setNewComment('')
       await supabase.from('aufgabe_comments').insert(payload)
+      // Notifications
+      await notifyAll(aktiv,'kommentar',a.titel,`${aktiv}: ${newComment.trim().substring(0,60)}`,a.id,'aufgabe')
+      // @mention detection
+      const mentions=newComment.match(/@(Alexander|Norman|Anna)/g)||[]
+      for(const m of mentions){
+        const name=m.slice(1) as PersonName
+        if(name!==aktiv){
+          await supabase.from('notifications').insert({fuer:name,von:aktiv,typ:'mention',titel:a.titel,nachricht:`${aktiv} hat dich erwähnt: ${newComment.trim().substring(0,80)}`,entity_id:a.id,entity_typ:'aufgabe'})
+        }
+      }
+      await logActivity('aufgabe',a.id,a.titel,'kommentiert',aktiv)
     }
 
     const addSubtask=async()=>{
@@ -547,15 +587,40 @@ export default function App() {
                       <span className="comment-person" style={{color:PERSON_HEX[c.person]||'var(--slate)'}}>{c.person}</span>
                       <span className="comment-time">{new Date(c.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
                     </div>
-                    <div className="comment-text">{c.kommentar}</div>
+                    <div className="comment-text">
+                      {c.kommentar.split(/(@(?:Alexander|Norman|Anna))/g).map((part,i)=>
+                        /^@(Alexander|Norman|Anna)$/.test(part)
+                          ?<span key={i} style={{color:PERSON_HEX[part.slice(1)]||'var(--signal)',fontWeight:700}}>{part}</span>
+                          :<span key={i}>{part}</span>
+                      )}
+                    </div>
+                    {c.anhang_url&&c.anhang_url.startsWith('https://')&&(
+                      <div style={{marginTop:'var(--sp2)'}}>
+                        {c.anhang_typ==='bild'
+                          ?<img src={c.anhang_url} alt={c.anhang_name} style={{maxWidth:'100%',borderRadius:'var(--r-md)',maxHeight:200,objectFit:'cover',cursor:'pointer'}} onClick={()=>window.open(c.anhang_url,'_blank')}/>
+                          :<a href={c.anhang_url} target="_blank" rel="noopener noreferrer" style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:'var(--text-xs)',color:'var(--signal)',fontWeight:600,textDecoration:'none',padding:'3px 8px',background:'var(--signal-bg)',borderRadius:'var(--r-sm)'}}>
+                            {Ico.file} {c.anhang_name}
+                          </a>}
+                      </div>
+                    )}
                   </div>
                 ))
               }
-              <div className="comment-form">
-                <input className="form-input" style={{fontSize:'var(--text-sm)'}} placeholder="Kommentar..." value={newComment}
-                  onChange={e=>setNewComment(e.target.value)}
-                  onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();addComment()}}}/>
-                <button className="btn btn-primary btn-sm" onClick={addComment}>Senden</button>
+              <div style={{marginBottom:'var(--sp2)'}}>
+                <div style={{display:'flex',gap:'var(--sp2)',alignItems:'flex-end'}}>
+                  <div style={{flex:1}}>
+                    <textarea className="form-input" style={{fontSize:'var(--text-sm)',minHeight:60,resize:'none'}}
+                      placeholder="Kommentar… @Alexander @Norman @Anna für Mentions"
+                      value={newComment} onChange={e=>setNewComment(e.target.value)}
+                      onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();addComment()}}}/>
+                    {commentFile&&<div style={{fontSize:'var(--text-xs)',color:'var(--signal)',marginTop:3,fontFamily:'var(--font-mono)'}}>📎 {commentFile.name}</div>}
+                  </div>
+                  <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                    <button className="btn btn-secondary btn-sm" onClick={()=>commentFileRef.current?.click()} title="Datei anhängen">📎</button>
+                    <button className="btn btn-primary btn-sm" onClick={addComment}>→</button>
+                  </div>
+                </div>
+                <input ref={commentFileRef} type="file" style={{display:'none'}} accept="image/*,.pdf,.doc,.docx,.xlsx,.zip" onChange={e=>setCommentFile(e.target.files?.[0]||null)}/>
               </div>
             </div>
             <div className="flyout-actions">
@@ -605,6 +670,7 @@ export default function App() {
                 MJ Prompt: {idee.titel} patch design, 65x43mm format, border-radius 4, flat embroidery, --ar 65:43 --v 7.0 --style raw
               </div>
             </div>
+            {idee.beschreibung&&(
               <div className="flyout-section"><div className="flyout-section-label">Konzept</div>
                 <div style={{fontSize:'var(--text-base)',color:'var(--slate)',lineHeight:1.6}}>{idee.beschreibung}</div>
               </div>
@@ -649,28 +715,36 @@ export default function App() {
   // ── Modals ─────────────────────────────────────────────────────────────────
   function AufgabeModal() {
     const isEdit=!!editA?.id
-    const [f,setF]=useState({titel:editA?.titel||'',beschreibung:editA?.beschreibung||'',person:editA?.person||aktiv,projekt:editA?.projekt||PROJEKTE[0],prioritaet:editA?.prioritaet||'Normal',status:editA?.status||'Offen',deadline:editA?.deadline||'',ergebnis:editA?.ergebnis||'',blocker:editA?.blocker||'',nummer:editA?.nummer?.toString()||''})
+    const [f,setF]=useState({titel:editA?.titel||'',beschreibung:editA?.beschreibung||'',person:editA?.person||aktiv,personen:editA?.personen||[editA?.person||aktiv],projekt:editA?.projekt||PROJEKTE[0],prioritaet:editA?.prioritaet||'Normal',status:editA?.status||'Offen',deadline:editA?.deadline||'',ergebnis:editA?.ergebnis||'',blocker:editA?.blocker||'',nummer:editA?.nummer?.toString()||''})
     const [errors,setErrors]=useState<Record<string,string>>({})
     const [saving,setSaving]=useState(false)
     const up=(k:string,v:string)=>{setF(p=>({...p,[k]:v}));setErrors(e=>({...e,[k]:''})) }
     const validate=()=>{
       const e:Record<string,string>={}
       if(!f.titel.trim()) e.titel='Bitte Aufgabe eingeben'
-      if(!f.deadline) e.deadline='Deadline ist Pflichtfeld'
       if(!f.ergebnis.trim()) e.ergebnis='Gewünschtes Ergebnis ist Pflichtfeld'
       setErrors(e); return Object.keys(e).length===0
     }
     const save=async()=>{
       if(!validate()) return; setSaving(true)
-      const data={...f,deadline:safeDate(f.deadline),beschreibung:f.beschreibung||'',blocker:f.blocker||'',nummer:f.nummer?parseInt(f.nummer):null}
+      const data={...f,deadline:safeDate(f.deadline)||null,beschreibung:f.beschreibung||'',blocker:f.blocker||'',nummer:f.nummer?parseInt(f.nummer):null,person:f.personen[0]||aktiv,personen:f.personen}
       if(isEdit){
         const {error}=await supabase.from('aufgaben').update(data).eq('id',editA!.id)
         if(error){toast('Fehler: '+error.message,'error');setSaving(false);return}
-        await logActivity('aufgabe',editA!.id,f.titel,'aktualisiert',aktiv); toast('Aktualisiert','success')
+        await logActivity('aufgabe',editA!.id,f.titel,'aktualisiert',aktiv)
+        await notifyAll(aktiv,'aufgabe_update',f.titel,`${aktiv} hat die Aufgabe aktualisiert`,editA!.id,'aufgabe')
+        toast('Aktualisiert','success')
       } else {
         const {data:ins,error}=await supabase.from('aufgaben').insert(data).select().single()
         if(error){toast('Fehler: '+error.message,'error');setSaving(false);return}
-        if(ins) await logActivity('aufgabe',ins.id,f.titel,'erstellt',aktiv); toast('Erstellt','success')
+        if(ins){
+          await logActivity('aufgabe',ins.id,f.titel,'erstellt',aktiv)
+          // Notify assigned persons
+          for(const p of f.personen.filter(p=>p!==aktiv)){
+            await notifyAll(aktiv,'zuweisung',f.titel,`${aktiv} hat dir eine Aufgabe zugewiesen`,ins.id,'aufgabe')
+          }
+        }
+        toast('Erstellt','success')
       }
       setSaving(false);setModal(null);setEditA(null)
     }
@@ -684,14 +758,27 @@ export default function App() {
               <div className="form-group" style={{flex:1}}><label className="form-label">Nummer</label><input className="form-input" type="number" min="1" placeholder="z.B. 01" value={f.nummer} onChange={e=>up('nummer',e.target.value)}/></div>
             </div>
             <div className="form-group"><label className="form-label">Details</label><textarea className="form-input" placeholder="Kontext, Links, Hinweise..." value={f.beschreibung} onChange={e=>up('beschreibung',e.target.value)}/></div>
+            <div className="form-group">
+              <label className="form-label">Verantwortlich (mehrere möglich)</label>
+              <div style={{display:'flex',gap:'var(--sp2)',flexWrap:'wrap'}}>
+                {PERSONEN.map(p=>(
+                  <button key={p.name} type="button"
+                    className={`chip${f.personen.includes(p.name)?' on':''}`}
+                    style={f.personen.includes(p.name)?{background:PERSON_HEX[p.name],borderColor:PERSON_HEX[p.name]}:{}}
+                    onClick={()=>{
+                      const next=f.personen.includes(p.name)
+                        ?f.personen.filter(x=>x!==p.name)
+                        :[...f.personen,p.name]
+                      if(next.length>0) setF(prev=>({...prev,personen:next,person:next[0]}))
+                    }}>{p.name}</button>
+                ))}
+              </div>
+            </div>
             <div className="form-row">
-              <div className="form-group"><label className="form-label">Verantwortlich *</label><select required className="form-input" value={f.person} onChange={e=>up('person',e.target.value)}>{PERSONEN.map(p=><option key={p.name}>{p.name}</option>)}</select></div>
               <div className="form-group"><label className="form-label">Priorität</label><select className="form-input" value={f.prioritaet} onChange={e=>up('prioritaet',e.target.value)}>{PRIOS.map(p=><option key={p}>{p}</option>)}</select></div>
+              <div className="form-group"><label className="form-label">Deadline (optional)</label><input type="date" className={`form-input${errors.deadline?' error':''}`} value={f.deadline} onChange={e=>up('deadline',e.target.value)}/></div>
             </div>
-            <div className="form-row">
-              <div className="form-group"><label className="form-label">Bereich *</label><select required className="form-input" value={f.projekt} onChange={e=>up('projekt',e.target.value)}>{PROJEKTE.map(p=><option key={p}>{p}</option>)}</select></div>
-              <div className="form-group"><label className="form-label">Deadline *</label><input type="date" required min={todayStr()} className={`form-input${errors.deadline?' error':''}`} value={f.deadline} onChange={e=>up('deadline',e.target.value)}/>{errors.deadline&&<div className="form-error">{errors.deadline}</div>}</div>
-            </div>
+            <div className="form-group"><label className="form-label">Bereich *</label><select required className="form-input" value={f.projekt} onChange={e=>up('projekt',e.target.value)}>{PROJEKTE.map(p=><option key={p}>{p}</option>)}</select></div>
             <div className="form-group"><label className="form-label">Gewünschtes Ergebnis *</label><input required className={`form-input${errors.ergebnis?' error':''}`} placeholder="Wann ist es WIRKLICH erledigt?" value={f.ergebnis} onChange={e=>up('ergebnis',e.target.value)}/>{errors.ergebnis&&<div className="form-error">{errors.ergebnis}</div>}</div>
             <div className="form-group"><label className="form-label">Blocker</label><input className="form-input" placeholder="Was blockiert?" value={f.blocker} onChange={e=>up('blocker',e.target.value)}/></div>
             {isEdit&&<div className="form-group"><label className="form-label">Status</label><select className="form-input" value={f.status} onChange={e=>up('status',e.target.value)}>{STATUSES.map(s=><option key={s}>{s}</option>)}</select></div>}
@@ -1030,7 +1117,7 @@ export default function App() {
         {/* B: Blocker Board */}
         {blockerAufgaben.length>0&&(
           <div className="card" style={{marginBottom:'var(--sp4)',borderLeft:'2px solid var(--red)'}}>
-            <div className="cockpit-critical-lbl">Blocker — müssen sofort gelöst werden ({blockerAufgaben.length})</div>
+            <div className="section-label-red">Blocker — müssen sofort gelöst werden ({blockerAufgaben.length})</div>
             {blockerAufgaben.map(a=>(
               <div key={a.id} className="aufgabe" style={{borderBottom:'1px solid var(--border)'}}>
                 <div className="a-body">
@@ -1212,6 +1299,60 @@ export default function App() {
               </div>
             ))}
           </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Notification Center ─────────────────────────────────────────────────────
+  function NotificationCenter() {
+    const unread = notifications.filter(n=>!n.gelesen).length
+    const markAllRead = async() => {
+      setNotifications(prev=>prev.map(n=>({...n,gelesen:true})))
+      setLastSeen(new Date().toISOString())
+      const ids=notifications.filter(n=>!n.gelesen).map(n=>n.id)
+      if(ids.length>0) await supabase.from('notifications').update({gelesen:true}).in('id',ids)
+    }
+    const typIcon=(t:string)=>{
+      if(t==='kommentar') return '💬'
+      if(t==='mention') return '👋'
+      if(t==='zuweisung') return '✅'
+      if(t==='aufgabe_neu') return '🆕'
+      return '📌'
+    }
+    return (
+      <div style={{position:'relative',display:'inline-block'}}>
+        <button
+          onClick={()=>{setNotifOpen(o=>!o);if(!notifOpen)markAllRead()}}
+          style={{width:36,height:36,borderRadius:'50%',border:'1px solid var(--border2)',background:unread>0?'var(--ink)':'rgba(255,255,255,0.7)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',position:'relative',transition:'all var(--anim-micro)',backdropFilter:'blur(8px)'}}>
+          <svg style={{width:15,height:15,stroke:unread>0?'#fff':'var(--mid)'}} viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+          {unread>0&&<div style={{position:'absolute',top:-3,right:-3,width:16,height:16,borderRadius:'50%',background:'var(--red)',border:'2px solid white',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff',fontFamily:'var(--font-mono)'}}>{unread>9?'9+':unread}</div>}
+        </button>
+        {notifOpen&&(
+          <>
+            <div style={{position:'fixed',inset:0,zIndex:499}} onClick={()=>setNotifOpen(false)}/>
+            <div style={{position:'absolute',top:44,right:0,width:340,background:'rgba(255,255,255,0.95)',backdropFilter:'blur(28px)',border:'1px solid rgba(255,255,255,0.8)',borderRadius:'var(--r-2xl)',boxShadow:'var(--sh-xl)',zIndex:500,overflow:'hidden',animation:'scaleIn 0.18s cubic-bezier(0.34,1.56,0.64,1)'}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'var(--sp4) var(--sp5) var(--sp3)',borderBottom:'1px solid var(--border)'}}>
+                <div style={{fontFamily:'var(--font-mono)',fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.13em'}}>Benachrichtigungen</div>
+                {notifications.length>0&&<button onClick={markAllRead} style={{fontSize:'var(--text-xs)',color:'var(--signal)',background:'none',border:'none',cursor:'pointer',fontFamily:'var(--font-mono)',fontWeight:600}}>Alle gelesen</button>}
+              </div>
+              <div style={{maxHeight:400,overflowY:'auto'}}>
+                {notifications.length===0&&<div style={{padding:'var(--sp8)',textAlign:'center',fontSize:'var(--text-sm)',color:'var(--muted)'}}>Keine Benachrichtigungen</div>}
+                {notifications.slice(0,20).map(n=>(
+                  <div key={n.id} style={{display:'flex',gap:'var(--sp3)',padding:'var(--sp3) var(--sp4)',borderBottom:'1px solid var(--border)',background:n.gelesen?'transparent':'rgba(62,111,90,0.04)',transition:'background var(--anim-micro)',cursor:n.entity_id?'pointer':'default'}}
+                    onClick={()=>{if(n.entity_id){const a=aufgaben.find(x=>x.id===n.entity_id);if(a)setFlyout(a)};setNotifOpen(false)}}>
+                    <div style={{fontSize:16,flexShrink:0,marginTop:1}}>{typIcon(n.typ)}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:'var(--text-sm)',fontWeight:n.gelesen?400:600,color:'var(--ink)',marginBottom:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{n.titel}</div>
+                      <div style={{fontSize:'var(--text-xs)',color:'var(--mid)',lineHeight:1.4}}>{n.nachricht}</div>
+                      <div style={{fontSize:10,color:'var(--muted)',marginTop:2,fontFamily:'var(--font-mono)'}}>{new Date(n.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
+                    </div>
+                    {!n.gelesen&&<div style={{width:6,height:6,borderRadius:'50%',background:'var(--signal)',flexShrink:0,marginTop:5}}/>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
         )}
       </div>
     )
@@ -1663,17 +1804,14 @@ export default function App() {
   return (
     <div className="app">
       <aside className={`sidebar${sidebarOpen?' open':''}`}>
-        <div className="sidebar-logo"><div className="sidebar-logo-name">Quadras</div><div className="sidebar-logo-sub">Founder Operating System</div></div>
-        <div className="person-block">
-          <div className="person-label">Aktive Person</div>
-          <div className="person-btns">
-            {PERSONEN.map(p=>(
-              <button key={p.name} className={`pbtn${aktiv===p.name?' active':''}`}
-                style={aktiv===p.name?{background:PERSON_HEX[p.name],borderColor:PERSON_HEX[p.name]}:{}}
-                onClick={()=>{setAktiv(p.name);setSidebarOpen(false)}}>{p.name[0]}</button>
-            ))}
+        <div className="sidebar-logo" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between'}}>
+          <div>
+            <div className="sidebar-logo-name">Quadras</div>
+            <div className="sidebar-logo-sub">Founder Operating System</div>
           </div>
+          <NotificationCenter/>
         </div>
+
         <nav className="nav">
           <div className="nav-section">Navigation</div>
           {navItems.map(n=>(
