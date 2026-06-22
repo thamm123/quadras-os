@@ -670,6 +670,7 @@ export default function App() {
                 MJ Prompt: {idee.titel} patch design, 65x43mm format, border-radius 4, flat embroidery, --ar 65:43 --v 7.0 --style raw
               </div>
             </div>
+            {idee.beschreibung&&(
               <div className="flyout-section"><div className="flyout-section-label">Konzept</div>
                 <div style={{fontSize:'var(--text-base)',color:'var(--slate)',lineHeight:1.6}}>{idee.beschreibung}</div>
               </div>
@@ -1116,7 +1117,7 @@ export default function App() {
         {/* B: Blocker Board */}
         {blockerAufgaben.length>0&&(
           <div className="card" style={{marginBottom:'var(--sp4)',borderLeft:'2px solid var(--red)'}}>
-            <div className="cockpit-critical-lbl">Blocker — müssen sofort gelöst werden ({blockerAufgaben.length})</div>
+            <div className="section-label-red">Blocker — müssen sofort gelöst werden ({blockerAufgaben.length})</div>
             {blockerAufgaben.map(a=>(
               <div key={a.id} className="aufgabe" style={{borderBottom:'1px solid var(--border)'}}>
                 <div className="a-body">
@@ -1803,7 +1804,13 @@ export default function App() {
   return (
     <div className="app">
       <aside className={`sidebar${sidebarOpen?' open':''}`}>
-        <div className="sidebar-logo"><div className="sidebar-logo-name">Quadras</div><div className="sidebar-logo-sub">Founder Operating System</div></div>
+        <div className="sidebar-logo" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between'}}>
+          <div>
+            <div className="sidebar-logo-name">Quadras</div>
+            <div className="sidebar-logo-sub">Founder Operating System</div>
+          </div>
+          <NotificationCenter/>
+        </div>
 
         <nav className="nav">
           <div className="nav-section">Navigation</div>
