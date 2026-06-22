@@ -1797,8 +1797,7 @@ export default function App() {
       gefiltert.forEach(a=>rows.push([
         String(a.nummer||''),a.titel,a.person,a.projekt,a.prioritaet,a.status,a.deadline||'',a.ergebnis
       ]))
-      const csv=rows.map(r=>r.map(v=>`"${v.replace(/"/g,'""')}"`).join(',')).join('
-')
+      const csv=rows.map(r=>r.map(v=>'"'+v.replace(/"/g,'""')+'"').join(',')).join('\n')
       const blob=new Blob([csv],{type:'text/csv'})
       const url=URL.createObjectURL(blob)
       const link=document.createElement('a')
