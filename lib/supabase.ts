@@ -12,8 +12,14 @@ export const PERSONEN = [
 ]
 export type PersonName = 'Alexander' | 'Norman' | 'Anna'
 
+// FIX: Farben mit ausreichend Kontrast auf hellem UND dunklem Hintergrund
+// Alexander: Kräftiges Blau (vorher #1A2028 = fast schwarz, kaum von Hintergrund zu unterscheiden)
+// Norman: Sattes Grün (passt zur QUADRAS Brand)
+// Anna: Rot bleibt, war schon gut
 export const PERSON_HEX: Record<string,string> = {
-  Alexander: '#1A2028', Norman: '#4C5A66', Anna: '#B23A32'
+  Alexander: '#2563EB',   // Kräftiges Blau — sichtbar auf Cream & Dark
+  Norman:    '#16A34A',   // Sattes Grün — passt zu Signal-Farbe
+  Anna:      '#DC2626',   // Kräftiges Rot — gut lesbar
 }
 
 export const PROJEKTE = [
@@ -27,7 +33,7 @@ export const STATUSES       = ['Offen','In Arbeit','Erledigt'] as const
 export const DESIGN_KATS    = ['Patch Idee','Frame Design','Hangtag','Verpackung','Logo Variante','Sonstiges'] as const
 export const DESIGN_STATUS  = ['Idee','In Arbeit','Feedback ausstehend','Freigegeben','Abgelehnt'] as const
 export const FREIGABE_STATUS= ['Offen','Freigegeben','Überarbeiten','Abgelehnt'] as const
-export const PRIO_HEX: Record<string,string> = { Hoch:'#B23A32', Normal:'#2A5298', Niedrig:'#7A8896' }
+export const PRIO_HEX: Record<string,string> = { Hoch:'#DC2626', Normal:'#2563EB', Niedrig:'#6B7280' }
 
 export type Aufgabe = {
   id: string; nummer: number|null; titel: string; beschreibung: string
