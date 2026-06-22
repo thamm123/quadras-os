@@ -3,7 +3,7 @@
    Quiet Luxury · Apple-Level · Mission Control
    ============================================================ */
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; } 
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
   /* ── Palette — entsättigt, edel ───────────────────────────── */
@@ -374,7 +374,7 @@ button { cursor: pointer; }
 /* ── Week timeline ────────────────────────────────────────── */
 .week-timeline { display: flex; gap: var(--sp3); overflow-x: auto; padding: var(--sp4) var(--sp5) var(--sp5); scrollbar-width: none; }
 .week-timeline::-webkit-scrollbar { display: none; }
-.week-day { flex-shrink: 0; min-width: 52px; text-align: center; }
+.week-day { flex-shrink: 0; min-width: 44px; text-align: center; }
 .week-day-label { font-size: 10px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; font-family: var(--font-mono); margin-bottom: 4px; }
 .week-day-date { font-family: var(--font-mono); font-size: var(--text-sm); font-weight: 700; color: var(--slate); margin-bottom: 6px; }
 .week-day.today .week-day-date { color: var(--ink); }
@@ -842,6 +842,9 @@ textarea.form-input { resize: vertical; min-height: 76px; }
   .cockpit-name { font-size: var(--text-2xl); }
   .readiness-grid { grid-template-columns: 1fr; }
   .mission-block { padding: var(--sp5) var(--sp5); border-radius: var(--r-xl); background: #1A2028; }
+  .sidebar-stats { padding-bottom: max(var(--sp4), env(safe-area-inset-bottom)); }
+  .stat-label { font-size: 9px; }
+  .stat-num { font-size: 18px; }
   .toast-container { bottom: 120px; right: var(--sp3); left: var(--sp3); }
   .toast { max-width: 100%; }
   .cmd-overlay { padding-top: 60px; padding-left: var(--sp3); padding-right: var(--sp3); }
@@ -916,6 +919,10 @@ textarea.form-input { resize: vertical; min-height: 76px; }
   .cmd-modal {
     background: rgba(18,22,30,0.97);
     border: 1px solid rgba(255,255,255,0.09);
+  }
+  .notif-dropdown {
+    background: rgba(18,22,30,0.97) !important;
+    border: 1px solid rgba(255,255,255,0.09) !important;
   }
   .mobile-nav-inner {
     background: rgba(18,22,30,0.92);
