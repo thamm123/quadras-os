@@ -375,7 +375,7 @@ export default function App() {
   const meineGesamt=aufgaben.filter(a=>a.person===aktiv).length
   const meineDone=aufgaben.filter(a=>a.person===aktiv&&a.status==='Erledigt').length
   const donePct=meineGesamt>0?Math.round(meineDone/meineGesamt*100):0
-  const weekDays=Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()+i);return d.toISOString().split('T')[0]})
+  const weekDays=Array.from({length:14},(_,i)=>{const d=new Date();d.setDate(d.getDate()+i);return d.toISOString().split('T')[0]})
   const gefiltert=aufgaben.filter(a=>{
     if(fPerson!=='Alle'&&!(a.personen||[a.person]).includes(fPerson)) return false
     if(fProjekt!=='Alle'&&a.projekt!==fProjekt) return false
@@ -946,7 +946,8 @@ export default function App() {
     const blockerAufgaben=aufgaben.filter(a=>a.blocker&&a.blocker.trim()!==''&&a.status!=='Erledigt')
     const designFeedbackOffen=ideen.filter(i=>i.status==='Feedback ausstehend'||i.freigabe==='Überarbeiten')
     const offeneEntscheidungen=entscheid.slice(0,5)
-    const alle7Tage=aufgaben.filter(a=>a.deadline&&a.deadline>=t&&a.deadline<=h7)
+    const in14dStr=Array.from({length:14},(_,i)=>{const d=new Date();d.setDate(d.getDate()+i);return d.toISOString().split('T')[0]}).pop()!
+    const alle7Tage=aufgaben.filter(a=>a.deadline&&a.deadline>=t&&a.deadline<=in14dStr)
     const wipWarn=(name:string)=>{
       const cnt=aufgaben.filter(a=>a.person===name&&a.status!=='Erledigt'&&!a.parent_id).length
       return cnt>=6?'rot':cnt>=4?'gelb':null
@@ -996,45 +997,6 @@ export default function App() {
 
     return (
       <div>
-        {/* Weekly Mission */}
-        <div className="mission-block">
-          <div className="mission-eyebrow">Weekly Mission</div>
-          {missionEdit ? (
-            <>
-              <textarea className="mission-textarea" autoFocus
-                placeholder={"Diese Woche ist erfolgreich, wenn:\n- Packaging final bestellt\n- Shopify Checkout getestet\n- 3 Designentscheidungen getroffen"}
-                value={missionDraft} onChange={e=>setMissionDraft(e.target.value)}
-                onKeyDown={e=>e.key==='Enter'&&e.metaKey&&saveMission()}/>
-              <div style={{fontSize:10,color:'rgba(255,255,255,0.2)',fontFamily:'var(--font-mono)',textAlign:'right',marginTop:-8,marginBottom:'var(--sp2)'}}>{missionDraft.length} Zeichen · ⌘+Enter zum Speichern</div>
-              <div style={{display:'flex',gap:'var(--sp2)'}}>
-                <button className="mission-edit-btn" onClick={saveMission} style={{background:'rgba(47,111,85,0.3)',borderColor:'rgba(47,111,85,0.5)',color:'#6fcfa3'}}>Speichern</button>
-                <button className="mission-edit-btn" onClick={()=>setMissionEdit(false)}>Abbrechen</button>
-              </div>
-            </>
-          ) : (
-            <>
-              <button className="mission-edit-btn" onClick={()=>{setMissionDraft(weeklyMission);setMissionEdit(true)}}>Bearbeiten</button>
-              {missionLines.length>0 ? (
-                <>
-                  <div className="mission-title">Diese Woche zählt:</div>
-                  <div className="mission-items">
-                    {missionLines.map((l,i)=>(
-                      <div key={i} className="mission-item">
-                        <div className="mission-item-dot"/>
-                        {l.replace(/^[-·•]\s*/,'')}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="mission-empty" onClick={()=>{setMissionDraft('');setMissionEdit(true)}}>
-                  Wochenziel setzen — was muss diese Woche passieren, damit der Launch nicht rutscht?
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
         {/* Executive Summary */}
         <div className="card" style={{marginBottom:'var(--sp4)',borderLeft:`3px solid ${statusColor}`}}>
           <div style={{padding:'var(--sp4)'}}>
@@ -1102,7 +1064,7 @@ export default function App() {
 
         {/* 7-day timeline — includes done tasks (C fix) */}
         <div className="card" style={{marginBottom:'var(--sp4)'}}>
-          <div className="section-label">Diese Woche</div>
+          <div className="section-label">Diese & nächste Woche</div>
           <div className="week-timeline">
             {weekDays.map(day=>{
               const dayTasks=alle7Tage.filter(a=>a.deadline===day)
@@ -1204,7 +1166,9 @@ export default function App() {
                   <div key={a.proj} className="area-card" onClick={()=>{setFProjekt(a.proj);setView('aufgaben')}} style={{borderTop:`2px solid ${ampel}`}}>
                     <div className="area-name" title={a.proj}>{a.proj}</div>
                     <div className="area-stats">
-                      {a.offen} offen{a.krit>0&&<span style={{color:'var(--red)',marginLeft:'var(--sp2)',fontWeight:700}}>· {a.krit} kritisch</span>}
+                      {a.offen} offen
+                      {a.krit>0&&<span style={{color:'var(--red)',marginLeft:'var(--sp2)',fontWeight:700}}>· {a.krit} kritisch</span>}
+                      {(()=>{const meine=aufgaben.filter(x=>x.projekt===a.proj&&(x.personen||[x.person]).includes(aktiv)&&x.status!=='Erledigt').length;return meine>0&&<span style={{color:PERSON_HEX[aktiv]||'var(--slate)',marginLeft:'var(--sp2)',fontWeight:600}}>· {meine} meine</span>})()}
                     </div>
                     <div className="area-bar"><div className="area-bar-fill" style={{width:`${pct}%`,background:ampel}}/></div>
                   </div>
@@ -1288,33 +1252,43 @@ export default function App() {
         {/* Risk Log */}
         <RiskLog risiken={risiken} aktiv={aktiv} onAdd={addRisiko} onDel={delRisiko}/>
 
-        {/* Team */}
+        {/* Team — compact */}
         <div style={{fontSize:'var(--text-md)',fontWeight:700,marginBottom:'var(--sp3)',color:'var(--ink)'}}>Team</div>
-        <div className="team-grid" style={{marginBottom:'var(--sp5)'}}>
-          {PERSONEN.map(p=>{
+        <div className="card" style={{marginBottom:'var(--sp5)'}}>
+          {PERSONEN.map((p,pi)=>{
             const pA=aufgaben.filter(a=>(a.personen||[a.person]).includes(p.name)&&a.status!=='Erledigt'&&!a.parent_id)
             const pDone=aufgaben.filter(a=>a.person===p.name&&a.status==='Erledigt').length
             const pTotal=aufgaben.filter(a=>a.person===p.name).length
             const pPct=pTotal>0?Math.round(pDone/pTotal*100):0
+            const inArbeit=pA.filter(a=>a.status==='In Arbeit').length
             return (
-              <div className="team-card" key={p.name}>
-                <div className="team-card-head">
-                  <div><div className="team-card-name" style={{color:PERSON_HEX[p.name]}}>{p.name}</div><div className="team-card-role">{p.role}</div></div>
-                  <div className="team-card-stats">
-                    <div style={{fontWeight:700}}>{pPct}%</div>
-                    <div style={{display:'flex',alignItems:'center',gap:'var(--sp1)'}}>
-                      <span>{pA.length} offen</span>
-                      {wipWarn(p.name)==='rot'&&<span className="wip-warning">Überladen</span>}
-                      {wipWarn(p.name)==='gelb'&&<span className="wip-warning" style={{background:'var(--amber-bg)',color:'var(--amber)'}}>Voll</span>}
-                    </div>
+              <div key={p.name} style={{display:'flex',alignItems:'center',gap:'var(--sp4)',padding:'var(--sp3) var(--sp5)',borderBottom:pi<PERSONEN.length-1?'1px solid var(--border)':'none'}}>
+                <div style={{width:32,height:32,borderRadius:'50%',background:PERSON_HEX[p.name],display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:'var(--text-sm)',fontWeight:700,flexShrink:0}}>{p.name[0]}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:'flex',alignItems:'center',gap:'var(--sp2)',marginBottom:4}}>
+                    <span style={{fontWeight:700,color:PERSON_HEX[p.name],fontSize:'var(--text-base)'}}>{p.name}</span>
+                    <span style={{fontSize:'var(--text-xs)',color:'var(--muted)',fontFamily:'var(--font-mono)'}}>{p.role}</span>
+                    {wipWarn(p.name)==='rot'&&<span className="wip-warning">Überladen</span>}
+                    {wipWarn(p.name)==='gelb'&&<span className="wip-warning" style={{background:'var(--amber-bg)',color:'var(--amber)'}}>Voll</span>}
+                  </div>
+                  <div className="metric-bar" style={{height:3,borderRadius:2}}>
+                    <div className="metric-bar-fill" style={{width:`${pPct}%`,background:PERSON_HEX[p.name]}}/>
                   </div>
                 </div>
-                <div className="metric-bar" style={{margin:'0 var(--sp4) var(--sp1)',borderRadius:1}}>
-                  <div className="metric-bar-fill" style={{width:`${pPct}%`,background:PERSON_HEX[p.name]}}/>
+                <div style={{display:'flex',gap:'var(--sp4)',flexShrink:0,textAlign:'center'}}>
+                  <div>
+                    <div style={{fontFamily:'var(--font-mono)',fontSize:'var(--text-lg)',fontWeight:700,color:pA.length>0?PERSON_HEX[p.name]:'var(--muted)',lineHeight:1}}>{pA.length}</div>
+                    <div style={{fontSize:10,color:'var(--muted)',fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Offen</div>
+                  </div>
+                  {inArbeit>0&&<div>
+                    <div style={{fontFamily:'var(--font-mono)',fontSize:'var(--text-lg)',fontWeight:700,color:'var(--amber)',lineHeight:1}}>{inArbeit}</div>
+                    <div style={{fontSize:10,color:'var(--muted)',fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Aktiv</div>
+                  </div>}
+                  <div>
+                    <div style={{fontFamily:'var(--font-mono)',fontSize:'var(--text-lg)',fontWeight:700,color:'var(--signal)',lineHeight:1}}>{pPct}%</div>
+                    <div style={{fontSize:10,color:'var(--muted)',fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Done</div>
+                  </div>
                 </div>
-                {pA.slice(0,3).map(a=><div className="team-task" key={a.id}><div className="team-task-title">{a.titel}</div><div className="team-task-meta">{a.projekt}{a.deadline?` · bis ${fmtDate(a.deadline)}`:''}</div></div>)}
-                {pA.length===0&&<div style={{padding:'var(--sp3) var(--sp4)',fontSize:'var(--text-sm)',color:'var(--muted)'}}>Alles erledigt</div>}
-                {pA.length>3&&<div style={{padding:'var(--sp2) var(--sp4)',fontSize:'var(--text-xs)',color:'var(--muted)'}}>+ {pA.length-3} weitere</div>}
               </div>
             )
           })}
@@ -1421,7 +1395,7 @@ export default function App() {
         {notifOpen&&(
           <>
             <div style={{position:'fixed',inset:0,zIndex:499}} onClick={()=>setNotifOpen(false)}/>
-            <div style={{position:'fixed',top:'auto',bottom:'auto',right:16,left:'auto',width:'min(340px, calc(100vw - 32px))',background:'rgba(255,255,255,0.95)',backdropFilter:'blur(28px)',border:'1px solid rgba(255,255,255,0.8)',borderRadius:'var(--r-2xl)',boxShadow:'var(--sh-xl)',zIndex:500,overflow:'hidden',animation:'scaleIn 0.18s cubic-bezier(0.34,1.56,0.64,1)',marginTop:8}}>
+            <div style={{position:'fixed',top:64,right:16,width:'min(360px, calc(100vw - 32px))',maxHeight:'calc(100vh - 80px)',background:'rgba(255,255,255,0.97)',backdropFilter:'blur(28px)',border:'1px solid rgba(255,255,255,0.8)',borderRadius:'var(--r-2xl)',boxShadow:'var(--sh-xl)',zIndex:500,overflow:'hidden',animation:'scaleIn 0.18s cubic-bezier(0.34,1.56,0.64,1)'}}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'var(--sp4) var(--sp5) var(--sp3)',borderBottom:'1px solid var(--border)'}}>
                 <div style={{fontFamily:'var(--font-mono)',fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.13em'}}>Benachrichtigungen</div>
                 {notifications.length>0&&<button onClick={markAllRead} style={{fontSize:'var(--text-xs)',color:'var(--signal)',background:'none',border:'none',cursor:'pointer',fontFamily:'var(--font-mono)',fontWeight:600}}>Alle gelesen</button>}
