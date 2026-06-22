@@ -152,6 +152,8 @@ export default function App() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [notifOpen, setNotifOpen] = useState(false)
   const [lastSeen, setLastSeen] = useState<string>(new Date().toISOString())
+  const bellRef = useRef<HTMLButtonElement>(null)
+  const [notifPos, setNotifPos] = useState({top:60,right:16})
 
 
 
@@ -468,6 +470,7 @@ export default function App() {
     const addComment=async()=>{
       if(!newComment.trim()&&!commentFile) return
       let anhang_url='', anhang_name='', anhang_typ=''
+      // FIX: Upload FIRST before optimistic update so URL is available
       if(commentFile){
         const fname=`${Date.now()}_${commentFile.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`
         const {error}=await supabase.storage.from('kommentar-anhaenge').upload(fname,commentFile)
@@ -479,6 +482,7 @@ export default function App() {
         setCommentFile(null)
       }
       const payload={aufgabe_id:a.id,person:aktiv,kommentar:newComment.trim(),anhang_url,anhang_name,anhang_typ}
+      // Optimistic update AFTER upload - URL is now correct
       setComments(prev=>[...prev,{...payload,id:'tmp-'+Date.now(),created_at:new Date().toISOString()}])
       setNewComment('')
       await supabase.from('aufgabe_comments').insert(payload)
@@ -614,11 +618,19 @@ export default function App() {
                       placeholder="Kommentar… @Alexander @Norman @Anna für Mentions"
                       value={newComment} onChange={e=>setNewComment(e.target.value)}
                       onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();addComment()}}}/>
-                    {commentFile&&<div style={{fontSize:'var(--text-xs)',color:'var(--signal)',marginTop:3,fontFamily:'var(--font-mono)'}}>📎 {commentFile.name}</div>}
+                    {commentFile&&(
+                      <div style={{display:'flex',alignItems:'center',gap:6,marginTop:4,padding:'4px 8px',background:'var(--signal-bg)',borderRadius:'var(--r-sm)'}}>
+                        {commentFile.type.startsWith('image/')
+                          ?<img src={URL.createObjectURL(commentFile)} alt={commentFile.name} style={{width:28,height:28,objectFit:'cover',borderRadius:3,flexShrink:0}}/>
+                          :<span style={{fontSize:14}}>📎</span>}
+                        <span style={{fontSize:'var(--text-xs)',color:'var(--signal)',flex:1,fontFamily:'var(--font-mono)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{commentFile.name}</span>
+                        <button className="icon-btn" style={{width:16,height:16}} onClick={()=>setCommentFile(null)}>×</button>
+                      </div>
+                    )}
                   </div>
                   <div style={{display:'flex',flexDirection:'column',gap:4}}>
                     <button className="btn btn-secondary btn-sm" onClick={()=>commentFileRef.current?.click()} title="Datei anhängen">📎</button>
-                    <button className="btn btn-primary btn-sm" onClick={addComment}>→</button>
+                    <button className="btn btn-primary btn-sm" onClick={addComment} disabled={!newComment.trim()&&!commentFile} style={{minWidth:32}}>→</button>
                   </div>
                 </div>
                 <input ref={commentFileRef} type="file" style={{display:'none'}} accept="image/*,.pdf,.doc,.docx,.xlsx,.zip" onChange={e=>setCommentFile(e.target.files?.[0]||null)}/>
@@ -1386,16 +1398,22 @@ export default function App() {
     }
     return (
       <div style={{position:'relative',display:'inline-block'}}>
-        <button
-          onClick={()=>{setNotifOpen(o=>!o);if(!notifOpen)markAllRead()}}
-          style={{width:36,height:36,borderRadius:'50%',border:'1px solid var(--border2)',background:unread>0?'var(--ink)':'rgba(255,255,255,0.7)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',position:'relative',transition:'all var(--anim-micro)',backdropFilter:'blur(8px)'}}>
+        <button ref={bellRef}
+          onClick={()=>{
+            if(bellRef.current){
+              const r=bellRef.current.getBoundingClientRect()
+              setNotifPos({top:r.bottom+8,right:Math.max(16,window.innerWidth-r.right)})
+            }
+            setNotifOpen(o=>!o);if(!notifOpen)markAllRead()
+          }}
+          style={{width:34,height:34,borderRadius:'50%',border:'1px solid var(--border2)',background:unread>0?'var(--ink)':'rgba(255,255,255,0.7)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',position:'relative',transition:'all var(--anim-micro)',backdropFilter:'blur(8px)',color:unread>0?'#fff':'var(--mid)'}}>
           <svg style={{width:15,height:15,stroke:unread>0?'#fff':'var(--mid)'}} viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
           {unread>0&&<div style={{position:'absolute',top:-3,right:-3,width:16,height:16,borderRadius:'50%',background:'var(--red)',border:'2px solid white',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff',fontFamily:'var(--font-mono)'}}>{unread>9?'9+':unread}</div>}
         </button>
         {notifOpen&&(
           <>
             <div style={{position:'fixed',inset:0,zIndex:499}} onClick={()=>setNotifOpen(false)}/>
-            <div style={{position:'fixed',top:64,right:16,width:'min(360px, calc(100vw - 32px))',maxHeight:'calc(100vh - 80px)',background:'rgba(255,255,255,0.97)',backdropFilter:'blur(28px)',border:'1px solid rgba(255,255,255,0.8)',borderRadius:'var(--r-2xl)',boxShadow:'var(--sh-xl)',zIndex:500,overflow:'hidden',animation:'scaleIn 0.18s cubic-bezier(0.34,1.56,0.64,1)'}}>
+            <div style={{position:'fixed',top:notifPos.top,right:notifPos.right,width:Math.min(360,typeof window!=='undefined'?window.innerWidth-32:340),maxHeight:'calc(100vh - 120px)',background:'rgba(255,255,255,0.97)',backdropFilter:'blur(28px)',border:'1px solid rgba(255,255,255,0.88)',borderRadius:'var(--r-2xl)',boxShadow:'var(--sh-xl)',zIndex:500,overflow:'hidden',animation:'scaleIn 0.16s cubic-bezier(0.34,1.56,0.64,1)'}}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'var(--sp4) var(--sp5) var(--sp3)',borderBottom:'1px solid var(--border)'}}>
                 <div style={{fontFamily:'var(--font-mono)',fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.13em'}}>Benachrichtigungen</div>
                 {notifications.length>0&&<button onClick={markAllRead} style={{fontSize:'var(--text-xs)',color:'var(--signal)',background:'none',border:'none',cursor:'pointer',fontFamily:'var(--font-mono)',fontWeight:600}}>Alle gelesen</button>}
@@ -1868,7 +1886,7 @@ export default function App() {
               </div>
             ))}
         </div>
-      </div> 
+      </div>
     )
   }
 
