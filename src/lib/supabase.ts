@@ -31,7 +31,7 @@ export const PRIO_HEX: Record<string,string> = { Hoch:'#B23A32', Normal:'#2A5298
 
 export type Aufgabe = {
   id: string; nummer: number|null; titel: string; beschreibung: string
-  person: string; projekt: string; prioritaet: string; status: string
+  person: string; personen: string[]; projekt: string; prioritaet: string; status: string
   deadline: string|null; ergebnis: string; phase: string; sortierung: number
   ist_hauptaufgabe: boolean; parent_id: string|null; blocker: string
   completed_at: string|null; created_at: string; updated_at: string
@@ -51,7 +51,13 @@ export type DesignIdee = {
 }
 export type FeedbackEntry = { person: string; text: string; datum: string }
 export type Comment = {
-  id: string; aufgabe_id: string; person: string; kommentar: string; created_at: string
+  id: string; aufgabe_id: string; person: string; kommentar: string
+  anhang_url: string; anhang_name: string; anhang_typ: string; created_at: string
+}
+export type Notification = {
+  id: string; fuer: string; von: string; typ: string; titel: string
+  nachricht: string; entity_id: string|null; entity_typ: string
+  gelesen: boolean; created_at: string
 }
 
 // Helpers
@@ -66,4 +72,11 @@ export const fmtShort  = (d:string|null) => d ? new Date(d+'T12:00:00').toLocale
 
 export async function logActivity(entity_type: string, entity_id: string, entity_titel: string, action: string, person: string) {
   await supabase.from('activity_log').insert({ entity_type, entity_id, entity_titel, action, person }).then(()=>{})
+}
+
+export async function notifyAll(von: string, typ: string, titel: string, nachricht: string, entity_id?: string, entity_typ?: string) {
+  const alle = ['Alexander','Norman','Anna'].filter(p=>p!==von)
+  for(const p of alle) {
+    await supabase.from('notifications').insert({ fuer:p, von, typ, titel, nachricht, entity_id:entity_id||null, entity_typ:entity_typ||'' })
+  }
 }
