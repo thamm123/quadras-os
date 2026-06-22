@@ -2,9 +2,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   supabase, PERSONEN, PROJEKTE, PRIOS, STATUSES,
-  DESIGN_KATS, DESIGN_STATUS, FREIGABE_STATUS, PERSON_HEX, PRIO_HEX,
+  DESIGN_KATS, DESIGN_STATUS, FREIGABE_STATUS, PERSON_HEX,
   Aufgabe, Entscheidung, Datei, DesignIdee, Comment, FeedbackEntry, Notification,
-  todayStr, in48hStr, in7dStr, isOverdue, isSoon, safeDate, fmtDate,
+  todayStr, in7dStr, isOverdue, isSoon, safeDate, fmtDate,
   logActivity, notifyAll, type PersonName
 } from '../lib/supabase'
 
@@ -74,8 +74,9 @@ function LoginScreen({onLogin}:{onLogin:(name:PersonName)=>void}) {
             <input className="form-input" type="password" placeholder="••••••••" value={password}
               onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==='Enter'&&login()}/>
           </div>
-          <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:'var(--sp3)'}}
+          <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:'var(--sp3)',gap:8}}
             onClick={login} disabled={loading}>
+            {loading&&<svg style={{width:16,height:16,animation:'spin 0.8s linear infinite'}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg>}
             {loading?'Anmelden…':'Anmelden'}
           </button>
         </div>
@@ -230,7 +231,7 @@ export default function App() {
 
   // Optimised realtime — diff injection
   useEffect(()=>{
-    const ch=supabase.channel('quadras-v7')
+    const ch=supabase.channel(`quadras-v8-${Math.random().toString(36).slice(2,8)}`)
       .on('postgres_changes',{event:'*',schema:'public',table:'team_settings'},()=>loadSettings())
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications'},({new:n})=>{
         const notif=n as Notification
@@ -363,10 +364,10 @@ export default function App() {
   // Computed
   const t=todayStr(); const h7=in7dStr()
   const kritisch=aufgaben.filter(a=>(isOverdue(a.deadline,a.status)||isSoon(a.deadline,a.status))&&a.status!=='Erledigt')
-  const meineOffen=aufgaben.filter(a=>a.person===aktiv&&a.status!=='Erledigt').length
+  const meineOffen=aufgaben.filter(a=>(a.personen||[a.person]).includes(aktiv)&&a.status!=='Erledigt').length
   const offenGesamt=aufgaben.filter(a=>a.status!=='Erledigt').length
   const ueberfaellig=aufgaben.filter(a=>isOverdue(a.deadline,a.status)).length
-  const meineFokus=aufgaben.filter(a=>a.person===aktiv&&a.status!=='Erledigt'&&!a.parent_id)
+  const meineFokus=aufgaben.filter(a=>(a.personen||[a.person]).includes(aktiv)&&a.status!=='Erledigt'&&!a.parent_id)
     .sort((a,b)=>({Hoch:0,Normal:1,Niedrig:2}[a.prioritaet as 'Hoch'|'Normal'|'Niedrig']??1)-({Hoch:0,Normal:1,Niedrig:2}[b.prioritaet as 'Hoch'|'Normal'|'Niedrig']??1))
     .slice(0,3)
   const hauptaufgaben=aufgaben.filter(a=>a.ist_hauptaufgabe)
@@ -374,10 +375,9 @@ export default function App() {
   const meineGesamt=aufgaben.filter(a=>a.person===aktiv).length
   const meineDone=aufgaben.filter(a=>a.person===aktiv&&a.status==='Erledigt').length
   const donePct=meineGesamt>0?Math.round(meineDone/meineGesamt*100):0
-  const naechste7=aufgaben.filter(a=>a.deadline&&a.deadline>=t&&a.deadline<=h7&&a.status!=='Erledigt').sort((a,b)=>(a.deadline||'').localeCompare(b.deadline||''))
   const weekDays=Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()+i);return d.toISOString().split('T')[0]})
   const gefiltert=aufgaben.filter(a=>{
-    if(fPerson!=='Alle'&&a.person!==fPerson) return false
+    if(fPerson!=='Alle'&&!(a.personen||[a.person]).includes(fPerson)) return false
     if(fProjekt!=='Alle'&&a.projekt!==fProjekt) return false
     if(fStatus!=='Alle'&&a.status!==fStatus) return false
     return true
@@ -399,12 +399,12 @@ export default function App() {
   }).filter(a=>a.total>0).sort((a,b)=>b.krit-a.krit||b.offen-a.offen)
 
   // ── AufgabeItem — cleaner typography ──────────────────────────────────────
-  function AItem({a,editable=false,compact=false}:{a:Aufgabe;editable?:boolean;compact?:boolean}) {
+  function AItem({a,editable=false}:{a:Aufgabe;editable?:boolean}) {
     const ov=isOverdue(a.deadline,a.status)
     const sn=isSoon(a.deadline,a.status)
     const metaParts=[a.person,a.projekt,a.deadline?fmtDate(a.deadline):''].filter(Boolean)
     return (
-      <div className={`aufgabe${a.status==='Erledigt'?' done':''}${ov?' critical':''}`}>
+      <div className={`aufgabe${a.status==='Erledigt'?' done':''}${ov?' critical':''}`} style={{borderLeft:`2px solid ${a.status==='Erledigt'?'var(--signal)':a.status==='In Arbeit'?'var(--amber)':ov?'var(--red)':'transparent'}`}}>
         <button className={`check-btn${a.status==='Erledigt'?' done':a.status==='In Arbeit'?' inarbeit':''}`}
           onClick={()=>toggleStatus(a)} title={a.status==='Erledigt'?'Wieder öffnen':'Erledigt'}>
           {a.status==='Erledigt'&&Ico.check}
@@ -431,6 +431,7 @@ export default function App() {
         </div>
         {editable&&(
           <div className="a-actions">
+            {a.status==='Offen'&&<button className="icon-btn" title="In Arbeit setzen" style={{fontSize:10,fontFamily:'var(--font-mono)',width:'auto',padding:'0 6px',color:'var(--amber)'}} onClick={async()=>{setAufgaben(prev=>prev.map(x=>x.id===a.id?{...x,status:'In Arbeit'}:x));await supabase.from('aufgaben').update({status:'In Arbeit'}).eq('id',a.id)}}>▶</button>}
             <button className="icon-btn" onClick={()=>{setEditA(a);setModal('aufgabe')}}>{Ico.edit}</button>
             <button className="icon-btn del" onClick={()=>delAufgabe(a)}>{Ico.trash}</button>
           </div>
@@ -482,7 +483,7 @@ export default function App() {
       setNewComment('')
       await supabase.from('aufgabe_comments').insert(payload)
       // Notifications
-      await notifyAll(aktiv,'kommentar',a.titel,`${aktiv}: ${newComment.trim().substring(0,60)}`,a.id,'aufgabe')
+      await notifyAll(aktiv,'kommentar',a.titel,`${aktiv}: ${newComment.trim().substring(0,60)}${a.deadline?' · fällig '+fmtDate(a.deadline):''}`,a.id,'aufgabe')
       // @mention detection
       const mentions=newComment.match(/@(Alexander|Norman|Anna)/g)||[]
       for(const m of mentions){
@@ -526,7 +527,7 @@ export default function App() {
               {a.nummer&&<div className="a-num" style={{marginBottom:'var(--sp1)'}}>AUFGABE {String(a.nummer).padStart(2,'0')}</div>}
               <div style={{fontSize:'var(--text-lg)',fontWeight:700,color:'var(--ink)',lineHeight:1.4,marginBottom:'var(--sp2)'}}>{a.titel}</div>
               <div className="a-meta-line">
-                <span style={{color:PERSON_HEX[a.person]||'var(--mid)',fontWeight:600}}>{a.person}</span>
+                {(a.personen||[a.person]).map((p,i)=><span key={p} style={{color:PERSON_HEX[p]||'var(--mid)',fontWeight:600}}>{i>0&&<span className="a-meta-dot"/>}{p}</span>)}
                 <span className="a-meta-dot"/>
                 <span>{a.projekt}</span>
                 {a.deadline&&<><span className="a-meta-dot"/><span style={{color:isOverdue(a.deadline,a.status)?'var(--red)':isSoon(a.deadline,a.status)?'var(--amber)':'var(--mid)'}}>bis {fmtDate(a.deadline)}</span></>}
@@ -621,6 +622,25 @@ export default function App() {
                   </div>
                 </div>
                 <input ref={commentFileRef} type="file" style={{display:'none'}} accept="image/*,.pdf,.doc,.docx,.xlsx,.zip" onChange={e=>setCommentFile(e.target.files?.[0]||null)}/>
+              </div>
+            </div>
+            {/* Übergabe */}
+            <div className="flyout-section">
+              <div className="flyout-section-label">Übergabe</div>
+              <div style={{display:'flex',gap:'var(--sp2)',flexWrap:'wrap'}}>
+                {PERSONEN.filter(p=>p.name!==a.person).map(p=>(
+                  <button key={p.name} className="btn btn-secondary btn-sm" style={{color:PERSON_HEX[p.name]}}
+                    onClick={async()=>{
+                      const note=window.prompt(`Übergabe-Notiz für ${p.name} (optional):`)
+                      if(note===null) return
+                      const upd={person:p.name,personen:[p.name],beschreibung:note?`${a.beschreibung?a.beschreibung+'\n\n':''}Übergabe von ${a.person}: ${note}`:a.beschreibung}
+                      setAufgaben(prev=>prev.map(x=>x.id===a.id?{...x,...upd}:x))
+                      setFlyout(prev=>prev?{...prev,...upd}:null)
+                      await supabase.from('aufgaben').update(upd).eq('id',a.id)
+                      await supabase.from('notifications').insert({fuer:p.name,von:aktiv,typ:'zuweisung',titel:a.titel,nachricht:`${aktiv} hat die Aufgabe an dich übergeben${note?' — '+note:''}`,entity_id:a.id,entity_typ:'aufgabe'})
+                      await logActivity('aufgabe',a.id,a.titel,`an ${p.name} übergeben`,aktiv)
+                    }}>→ {p.name}</button>
+                ))}
               </div>
             </div>
             <div className="flyout-actions">
@@ -732,7 +752,7 @@ export default function App() {
         const {error}=await supabase.from('aufgaben').update(data).eq('id',editA!.id)
         if(error){toast('Fehler: '+error.message,'error');setSaving(false);return}
         await logActivity('aufgabe',editA!.id,f.titel,'aktualisiert',aktiv)
-        await notifyAll(aktiv,'aufgabe_update',f.titel,`${aktiv} hat die Aufgabe aktualisiert`,editA!.id,'aufgabe')
+        await notifyAll(aktiv,'aufgabe_update',f.titel,`${aktiv} hat aktualisiert${f.deadline?' · fällig '+fmtDate(f.deadline):''}`,editA!.id,'aufgabe')
         toast('Aktualisiert','success')
       } else {
         const {data:ins,error}=await supabase.from('aufgaben').insert(data).select().single()
@@ -985,6 +1005,7 @@ export default function App() {
                 placeholder={"Diese Woche ist erfolgreich, wenn:\n- Packaging final bestellt\n- Shopify Checkout getestet\n- 3 Designentscheidungen getroffen"}
                 value={missionDraft} onChange={e=>setMissionDraft(e.target.value)}
                 onKeyDown={e=>e.key==='Enter'&&e.metaKey&&saveMission()}/>
+              <div style={{fontSize:10,color:'rgba(255,255,255,0.2)',fontFamily:'var(--font-mono)',textAlign:'right',marginTop:-8,marginBottom:'var(--sp2)'}}>{missionDraft.length} Zeichen · ⌘+Enter zum Speichern</div>
               <div style={{display:'flex',gap:'var(--sp2)'}}>
                 <button className="mission-edit-btn" onClick={saveMission} style={{background:'rgba(47,111,85,0.3)',borderColor:'rgba(47,111,85,0.5)',color:'#6fcfa3'}}>Speichern</button>
                 <button className="mission-edit-btn" onClick={()=>setMissionEdit(false)}>Abbrechen</button>
@@ -1055,6 +1076,20 @@ export default function App() {
           <div className="cockpit-role"><div className="cockpit-dot" style={{background:PERSON_HEX[aktiv]}}/>{ap.role}</div>
           <div className="cockpit-name">{aktiv}</div>
           <div className="cockpit-meta">{new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
+          {(()=>{const todayTasks=aufgaben.filter(a=>(a.personen||[a.person]).includes(aktiv)&&a.deadline===t&&a.status!=='Erledigt');return todayTasks.length>0&&(
+            <div style={{marginTop:'var(--sp4)',paddingTop:'var(--sp4)',borderTop:'1px solid rgba(255,255,255,0.08)'}}>
+              <div style={{fontFamily:'var(--font-mono)',fontSize:10,color:'rgba(255,255,255,0.3)',textTransform:'uppercase',letterSpacing:'0.12em',marginBottom:'var(--sp2)'}}>Heute fällig — {todayTasks.length} Aufgabe{todayTasks.length>1?'n':''}</div>
+              <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                {todayTasks.slice(0,3).map(a=>(
+                  <div key={a.id} style={{display:'flex',alignItems:'center',gap:'var(--sp2)',cursor:'pointer'}} onClick={()=>setFlyout(a)}>
+                    <div style={{width:5,height:5,borderRadius:'50%',background:a.prioritaet==='Hoch'?'var(--red)':'var(--signal)',flexShrink:0}}/>
+                    <span style={{fontSize:'var(--text-sm)',color:'rgba(255,255,255,0.7)',flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{a.titel}</span>
+                  </div>
+                ))}
+                {todayTasks.length>3&&<div style={{fontSize:'var(--text-xs)',color:'rgba(255,255,255,0.3)',fontFamily:'var(--font-mono)'}}>+ {todayTasks.length-3} weitere</div>}
+              </div>
+            </div>
+          )})()}
         </div>
 
         {/* Metrics */}
@@ -1219,7 +1254,7 @@ export default function App() {
                     <button className="btn btn-xs btn-signal"
                       title="Folgeaufgabe aus dieser Entscheidung erstellen"
                       onClick={()=>{
-                        setEditA({titel:`Folgeaufgabe: ${e.titel}`,beschreibung:`Aus Entscheidung vom ${fmtDate(e.datum)}: ${e.naechster_schritt||e.begruendung}`,person:aktiv,projekt:e.projekt,prioritaet:'Hoch',status:'Offen',deadline:'',ergebnis:'',blocker:'',nummer:null,phase:'',sortierung:0,ist_hauptaufgabe:false,parent_id:null,completed_at:null,id:'',created_at:'',updated_at:'',freigabe:''} as unknown as Aufgabe)
+                        setEditA({titel:`Folgeaufgabe: ${e.titel}`,beschreibung:`Aus Entscheidung vom ${fmtDate(e.datum)}: ${e.naechster_schritt||e.begruendung}`,person:aktiv,personen:[aktiv],projekt:e.projekt,prioritaet:'Hoch',status:'Offen',deadline:'',ergebnis:'',blocker:'',nummer:null,phase:'',sortierung:0,ist_hauptaufgabe:false,parent_id:null,completed_at:null,id:'',created_at:'',updated_at:''} as unknown as Aufgabe)
                         setModal('aufgabe')
                       }}>+ Aufgabe</button>
                   </div>
@@ -1257,7 +1292,7 @@ export default function App() {
         <div style={{fontSize:'var(--text-md)',fontWeight:700,marginBottom:'var(--sp3)',color:'var(--ink)'}}>Team</div>
         <div className="team-grid" style={{marginBottom:'var(--sp5)'}}>
           {PERSONEN.map(p=>{
-            const pA=aufgaben.filter(a=>a.person===p.name&&a.status!=='Erledigt'&&!a.parent_id)
+            const pA=aufgaben.filter(a=>(a.personen||[a.person]).includes(p.name)&&a.status!=='Erledigt'&&!a.parent_id)
             const pDone=aufgaben.filter(a=>a.person===p.name&&a.status==='Erledigt').length
             const pTotal=aufgaben.filter(a=>a.person===p.name).length
             const pPct=pTotal>0?Math.round(pDone/pTotal*100):0
@@ -1295,11 +1330,66 @@ export default function App() {
                 <div className="activity-text">
                   <span style={{fontWeight:600,color:PERSON_HEX[a.person]||'var(--slate)'}}>{a.person}</span>{' '}hat <em>{a.entity_titel}</em> {a.action}
                 </div>
-                <div className="activity-time">{new Date(a.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
+                <div className="activity-time">{new Date(a.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})} {new Date(a.created_at).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}</div>
               </div>
             ))}
           </div>
         )}
+
+        {/* Wochenbericht */}
+        <WochenberichtBlock/>
+      </div>
+    )
+  }
+
+
+  // ── Wochenbericht ──────────────────────────────────────────────────────────
+  function WochenberichtBlock() {
+    const now = new Date()
+    const monday = new Date(now)
+    monday.setDate(now.getDate() - (now.getDay()===0?6:now.getDay()-1))
+    monday.setHours(0,0,0,0)
+    const mondayStr = monday.toISOString()
+    const doneThisWeek = aufgaben.filter(a=>a.status==='Erledigt'&&a.completed_at&&a.completed_at>=mondayStr)
+    const doneLastWeek = aufgaben.filter(a=>{
+      if(a.status!=='Erledigt'||!a.completed_at) return false
+      const d=new Date(a.completed_at)
+      const lmStart=new Date(monday); lmStart.setDate(lmStart.getDate()-7)
+      return d>=lmStart&&d<monday
+    })
+    const diff = doneThisWeek.length - doneLastWeek.length
+    if(doneThisWeek.length===0&&doneLastWeek.length===0) return null
+    return (
+      <div className="card" style={{marginBottom:'var(--sp4)'}}>
+        <div className="section-label">Wochenbericht</div>
+        <div style={{padding:'var(--sp4) var(--sp5)'}}>
+          <div style={{display:'flex',alignItems:'center',gap:'var(--sp4)',marginBottom:'var(--sp3)'}}>
+            <div style={{textAlign:'center'}}>
+              <div style={{fontFamily:'var(--font-mono)',fontSize:'var(--text-3xl)',fontWeight:700,color:'var(--signal)',letterSpacing:'-1px'}}>{doneThisWeek.length}</div>
+              <div style={{fontSize:'var(--text-xs)',color:'var(--muted)',fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.08em'}}>Diese Woche</div>
+            </div>
+            <div style={{flex:1,height:1,background:'var(--border)'}}/>
+            <div style={{textAlign:'center'}}>
+              <div style={{fontFamily:'var(--font-mono)',fontSize:'var(--text-xl)',fontWeight:700,color:'var(--mid)',letterSpacing:'-0.5px'}}>{doneLastWeek.length}</div>
+              <div style={{fontSize:'var(--text-xs)',color:'var(--muted)',fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.08em'}}>Letzte Woche</div>
+            </div>
+            <div style={{padding:'4px 10px',borderRadius:'var(--r-full)',background:diff>0?'var(--signal-bg)':diff<0?'var(--red-bg)':'rgba(15,19,24,0.05)',color:diff>0?'var(--signal)':diff<0?'var(--red)':'var(--muted)',fontFamily:'var(--font-mono)',fontSize:'var(--text-xs)',fontWeight:700}}>
+              {diff>0?`+${diff}`:diff===0?'=':`${diff}`}
+            </div>
+          </div>
+          {doneThisWeek.length>0&&(
+            <div style={{display:'flex',flexDirection:'column',gap:4}}>
+              {doneThisWeek.slice(0,5).map(a=>(
+                <div key={a.id} style={{display:'flex',alignItems:'center',gap:'var(--sp2)',fontSize:'var(--text-sm)',color:'var(--mid)'}}>
+                  <span style={{color:'var(--signal)',fontSize:10}}>✓</span>
+                  <span style={{flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{a.titel}</span>
+                  <span style={{fontSize:10,color:'var(--muted)',fontFamily:'var(--font-mono)',flexShrink:0}}>{a.person}</span>
+                </div>
+              ))}
+              {doneThisWeek.length>5&&<div style={{fontSize:'var(--text-xs)',color:'var(--muted)',fontFamily:'var(--font-mono)'}}>+ {doneThisWeek.length-5} weitere</div>}
+            </div>
+          )}
+        </div>
       </div>
     )
   }
@@ -1331,7 +1421,7 @@ export default function App() {
         {notifOpen&&(
           <>
             <div style={{position:'fixed',inset:0,zIndex:499}} onClick={()=>setNotifOpen(false)}/>
-            <div style={{position:'absolute',top:44,right:0,width:340,background:'rgba(255,255,255,0.95)',backdropFilter:'blur(28px)',border:'1px solid rgba(255,255,255,0.8)',borderRadius:'var(--r-2xl)',boxShadow:'var(--sh-xl)',zIndex:500,overflow:'hidden',animation:'scaleIn 0.18s cubic-bezier(0.34,1.56,0.64,1)'}}>
+            <div style={{position:'fixed',top:'auto',bottom:'auto',right:16,left:'auto',width:'min(340px, calc(100vw - 32px))',background:'rgba(255,255,255,0.95)',backdropFilter:'blur(28px)',border:'1px solid rgba(255,255,255,0.8)',borderRadius:'var(--r-2xl)',boxShadow:'var(--sh-xl)',zIndex:500,overflow:'hidden',animation:'scaleIn 0.18s cubic-bezier(0.34,1.56,0.64,1)',marginTop:8}}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'var(--sp4) var(--sp5) var(--sp3)',borderBottom:'1px solid var(--border)'}}>
                 <div style={{fontFamily:'var(--font-mono)',fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.13em'}}>Benachrichtigungen</div>
                 {notifications.length>0&&<button onClick={markAllRead} style={{fontSize:'var(--text-xs)',color:'var(--signal)',background:'none',border:'none',cursor:'pointer',fontFamily:'var(--font-mono)',fontWeight:600}}>Alle gelesen</button>}
@@ -1339,15 +1429,17 @@ export default function App() {
               <div style={{maxHeight:400,overflowY:'auto'}}>
                 {notifications.length===0&&<div style={{padding:'var(--sp8)',textAlign:'center',fontSize:'var(--text-sm)',color:'var(--muted)'}}>Keine Benachrichtigungen</div>}
                 {notifications.slice(0,20).map(n=>(
-                  <div key={n.id} style={{display:'flex',gap:'var(--sp3)',padding:'var(--sp3) var(--sp4)',borderBottom:'1px solid var(--border)',background:n.gelesen?'transparent':'rgba(62,111,90,0.04)',transition:'background var(--anim-micro)',cursor:n.entity_id?'pointer':'default'}}
-                    onClick={()=>{if(n.entity_id){const a=aufgaben.find(x=>x.id===n.entity_id);if(a)setFlyout(a)};setNotifOpen(false)}}>
-                    <div style={{fontSize:16,flexShrink:0,marginTop:1}}>{typIcon(n.typ)}</div>
-                    <div style={{flex:1,minWidth:0}}>
+                  <div key={n.id} style={{display:'flex',gap:'var(--sp3)',padding:'var(--sp3) var(--sp4)',borderBottom:'1px solid var(--border)',background:n.gelesen?'transparent':'rgba(62,111,90,0.04)',transition:'background var(--anim-micro)'}}>
+                    <div style={{fontSize:16,flexShrink:0,marginTop:1,cursor:n.entity_id?'pointer':'default'}} onClick={()=>{if(n.entity_id){const a=aufgaben.find(x=>x.id===n.entity_id);if(a)setFlyout(a)};setNotifOpen(false)}}>{typIcon(n.typ)}</div>
+                    <div style={{flex:1,minWidth:0,cursor:n.entity_id?'pointer':'default'}} onClick={()=>{if(n.entity_id){const a=aufgaben.find(x=>x.id===n.entity_id);if(a)setFlyout(a)};setNotifOpen(false)}}>
                       <div style={{fontSize:'var(--text-sm)',fontWeight:n.gelesen?400:600,color:'var(--ink)',marginBottom:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{n.titel}</div>
                       <div style={{fontSize:'var(--text-xs)',color:'var(--mid)',lineHeight:1.4}}>{n.nachricht}</div>
                       <div style={{fontSize:10,color:'var(--muted)',marginTop:2,fontFamily:'var(--font-mono)'}}>{new Date(n.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
                     </div>
-                    {!n.gelesen&&<div style={{width:6,height:6,borderRadius:'50%',background:'var(--signal)',flexShrink:0,marginTop:5}}/>}
+                    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,flexShrink:0}}>
+                      {!n.gelesen&&<div style={{width:6,height:6,borderRadius:'50%',background:'var(--signal)',marginTop:5}}/>}
+                      <button onClick={async()=>{setNotifications(prev=>prev.filter(x=>x.id!==n.id));await supabase.from('notifications').delete().eq('id',n.id)}} style={{width:18,height:18,borderRadius:'50%',border:'none',background:'transparent',cursor:'pointer',color:'var(--muted)',fontSize:11,display:'flex',alignItems:'center',justifyContent:'center',opacity:0.5}} title="Löschen">×</button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1361,8 +1453,14 @@ export default function App() {
   // ── Command Center (Cmd+K) ──────────────────────────────────────────────────
   function CommandCenter() {
     const [q,setQ]=useState(cmdQuery)
+    const [history,setHistory]=useState<string[]>(()=>{try{return JSON.parse(localStorage.getItem('qos-search-history')||'[]')}catch{return[]}})
     const ref=useRef<HTMLInputElement>(null)
     useEffect(()=>{ ref.current?.focus() },[])
+    const addToHistory=(term:string)=>{
+      const next=[term,...history.filter(h=>h!==term)].slice(0,5)
+      setHistory(next)
+      try{localStorage.setItem('qos-search-history',JSON.stringify(next))}catch{}
+    }
 
     const results:{type:string;item:Aufgabe|Entscheidung|DesignIdee|Datei;title:string;sub:string}[]=[]
     if(q.trim().length>0) {
@@ -1378,6 +1476,7 @@ export default function App() {
     }
 
     const go=(r:typeof results[0])=>{
+      if(q.trim()) addToHistory(q.trim())
       if(r.type==='aufgabe'){setFlyout(r.item as Aufgabe)}
       if(r.type==='entscheidung'){setView('entscheidungen')}
       if(r.type==='design'){setDesignFlyout(r.item as DesignIdee);setView('design')}
@@ -1405,6 +1504,7 @@ export default function App() {
           <div className="cmd-results">
             {q.trim()===''&&(
               <div>
+                {history.length>0&&<><div className="cmd-section-hdr">Zuletzt gesucht</div>{history.map((h,i)=><div key={i} className="cmd-item" onClick={()=>setQ(h)}><div className="cmd-item-icon" style={{fontSize:12,color:'var(--muted)'}}>↺</div><div className="cmd-item-body"><div className="cmd-item-title" style={{color:'var(--muted)'}}>{h}</div></div></div>)}</>}
                 <div className="cmd-section-hdr">Schnellzugriff</div>
                 {[{label:'Neue Aufgabe',action:()=>{setEditA(null);setModal('aufgabe');setCmdOpen(false)},icon:Ico.aufg},
                   {label:'Launch Plan',action:()=>{setView('plan');setCmdOpen(false)},icon:Ico.plan},
@@ -1441,16 +1541,32 @@ export default function App() {
 
   // ── Focus Mode ───────────────────────────────────────────────────────────────
   function FocusMode({task}:{task:Aufgabe}) {
+    const [seconds, setSeconds] = useState(0)
+    const [running, setRunning] = useState(false)
+    useEffect(()=>{
+      if(!running) return
+      const id=setInterval(()=>setSeconds(s=>s+1),1000)
+      return ()=>clearInterval(id)
+    },[running])
+    const fmt=(s:number)=>`${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`
     return (
       <div className="focus-overlay" onClick={e=>e.target===e.currentTarget&&setFocusTask(null)}>
         <div style={{position:'relative'}}>
           <button className="focus-close" onClick={()=>setFocusTask(null)}>Beenden · Esc</button>
           <div className="focus-card">
             <div className="focus-eyebrow">
-              <div style={{width:5,height:5,borderRadius:'50%',background:'var(--signal)'}}/>
+              <div style={{width:5,height:5,borderRadius:'50%',background:running?'var(--signal)':'rgba(255,255,255,0.3)',animation:running?'pulse 2.5s infinite':undefined}}/>
               Deep Work · {task.person} · {task.projekt}
             </div>
             <div className="focus-title">{task.titel}</div>
+            {/* Timer */}
+            <div style={{display:'flex',alignItems:'center',gap:'var(--sp4)',marginBottom:'var(--sp6)',padding:'var(--sp4) var(--sp5)',background:'rgba(255,255,255,0.05)',borderRadius:'var(--r-xl)',border:'1px solid rgba(255,255,255,0.08)'}}>
+              <div style={{fontFamily:'var(--font-mono)',fontSize:'var(--text-2xl)',fontWeight:700,color:running?'#fff':'rgba(255,255,255,0.4)',letterSpacing:'0.05em',flex:1}}>{fmt(seconds)}</div>
+              <button onClick={()=>setRunning(r=>!r)} style={{padding:'8px 16px',borderRadius:'var(--r-lg)',border:'1px solid rgba(255,255,255,0.15)',background:running?'rgba(143,62,54,0.3)':'rgba(62,111,90,0.3)',color:running?'#ff9a9a':'#6fcfa3',fontSize:'var(--text-sm)',fontWeight:600,cursor:'pointer',fontFamily:'var(--font)'}}>
+                {running?'Pause':'Start'}
+              </button>
+              {seconds>0&&<button onClick={()=>{setSeconds(0);setRunning(false)}} style={{padding:'8px 12px',borderRadius:'var(--r-lg)',border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.05)',color:'rgba(255,255,255,0.4)',fontSize:'var(--text-sm)',cursor:'pointer',fontFamily:'var(--font)'}}>Reset</button>}
+            </div>
             {task.ergebnis&&(
               <>
                 <div className="focus-result-lbl">Gewünschtes Ergebnis</div>
@@ -1562,7 +1678,6 @@ export default function App() {
 
     const addHauptaufgabe = async () => {
       if(!newTitel.trim()) return
-      if(!newDeadline) return
       if(!newErgebnis.trim()) return
       setAddingH(true)
       const nummerWert = newNummer ? parseInt(newNummer) : Math.max(0,...hauptaufgaben.map(a=>a.nummer||0)) + 1
@@ -1609,7 +1724,7 @@ export default function App() {
                 <input type="number" min="1" className="form-input" placeholder="z.B. 01" value={newNummer} onChange={e=>setNewNummer(e.target.value)}/>
               </div>
               <div className="form-group" style={{marginBottom:0}}>
-                <label className="form-label">Deadline *</label>
+                <label className="form-label">Deadline (optional)</label>
                 <input type="date" className="form-input" value={newDeadline} onChange={e=>setNewDeadline(e.target.value)}/>
               </div>
             </div>
@@ -1670,25 +1785,48 @@ export default function App() {
   }
 
   function AufgabenView() {
+    const [sortBy, setSortBy] = useState<'deadline'|'prioritaet'|'person'|'created'>('created')
+    const sorted = [...gefiltert].filter(a=>!a.parent_id||fStatus!=='Alle').sort((a,b)=>{
+      if(sortBy==='deadline') return (a.deadline||'9999').localeCompare(b.deadline||'9999')
+      if(sortBy==='prioritaet') return ({Hoch:0,Normal:1,Niedrig:2}[a.prioritaet as 'Hoch'|'Normal'|'Niedrig']??1)-({Hoch:0,Normal:1,Niedrig:2}[b.prioritaet as 'Hoch'|'Normal'|'Niedrig']??1)
+      if(sortBy==='person') return a.person.localeCompare(b.person)
+      return new Date(b.created_at).getTime()-new Date(a.created_at).getTime()
+    })
+    const exportCSV=()=>{
+      const rows=[['Nummer','Titel','Person','Bereich','Priorität','Status','Deadline','Ergebnis']]
+      gefiltert.forEach(a=>rows.push([
+        String(a.nummer||''),a.titel,a.person,a.projekt,a.prioritaet,a.status,a.deadline||'',a.ergebnis
+      ]))
+      const csv=rows.map(r=>r.map(v=>`"${v.replace(/"/g,'""')}"`).join(',')).join('
+')
+      const blob=new Blob([csv],{type:'text/csv'})
+      const url=URL.createObjectURL(blob)
+      const link=document.createElement('a')
+      link.href=url; link.download=`quadras-aufgaben-${new Date().toISOString().split('T')[0]}.csv`
+      link.click(); URL.revokeObjectURL(url)
+    }
     return (
       <div>
         <div className="page-head">
           <div><div className="page-title">Aufgaben</div><div className="page-sub">{gefiltert.length} Aufgaben · <kbd className="kbd">N</kbd> neue Aufgabe</div></div>
-          <button className="btn btn-primary" onClick={()=>{setEditA(null);setModal('aufgabe')}}>{Ico.plus} Neue Aufgabe</button>
+          <div style={{display:'flex',gap:'var(--sp2)'}}>
+            <button className="btn btn-secondary" onClick={exportCSV} title="Als CSV exportieren">↓ CSV</button>
+            <button className="btn btn-primary" onClick={()=>{setEditA(null);setModal('aufgabe')}}>{Ico.plus} Neue Aufgabe</button>
+          </div>
         </div>
         <div className="filter-row"><span className="filter-lbl">Person</span>{['Alle',...PERSONEN.map(p=>p.name)].map(p=><button key={p} className={`chip${fPerson===p?' on':''}`} onClick={()=>setFPerson(p)}>{p}</button>)}</div>
         <div className="filter-row"><span className="filter-lbl">Bereich</span>{['Alle',...PROJEKTE].map(p=><button key={p} className={`chip${fProjekt===p?' on':''}`} onClick={()=>setFProjekt(p)}>{p}</button>)}</div>
-        <div className="filter-row" style={{marginBottom:'var(--sp5)'}}><span className="filter-lbl">Status</span>{['Alle',...STATUSES].map(s=><button key={s} className={`chip${fStatus===s?' on':''}`} onClick={()=>setFStatus(s)}>{s}</button>)}</div>
+        <div className="filter-row"><span className="filter-lbl">Status</span>{['Alle',...STATUSES].map(s=><button key={s} className={`chip${fStatus===s?' on':''}`} onClick={()=>setFStatus(s)}>{s}</button>)}</div>
+        <div className="filter-row" style={{marginBottom:'var(--sp5)'}}><span className="filter-lbl">Sortierung</span>{([['created','Neueste'],['deadline','Deadline'],['prioritaet','Priorität'],['person','Person']] as const).map(([k,l])=><button key={k} className={`chip${sortBy===k?' on':''}`} onClick={()=>setSortBy(k)}>{l}</button>)}</div>
         <div className="card">
-          {loading?<SkeletonList rows={6}/>:gefiltert.filter(a=>!a.parent_id||fStatus!=='Alle').length===0?<div className="empty"><div className="empty-icon">{Ico.empty}</div><div className="empty-title">Keine Aufgaben</div><div className="empty-sub">Filter anpassen oder neue Aufgabe anlegen</div></div>
-            :gefiltert.map(a=><AItem key={a.id} a={a} editable/>)}
+          {loading?<SkeletonList rows={6}/>:sorted.length===0?<div className="empty"><div className="empty-icon">{Ico.empty}</div><div className="empty-title">Keine Aufgaben</div><div className="empty-sub" style={{marginBottom:'var(--sp4)'}}>Filter anpassen oder neue Aufgabe anlegen</div><button className="btn btn-primary btn-sm" onClick={()=>{setEditA(null);setModal('aufgabe')}}>+ Neue Aufgabe</button></div>
+            :sorted.map(a=><AItem key={a.id} a={a} editable/>)}
         </div>
       </div>
     )
   }
 
   function DesignView() {
-    const [feedbackText,setFeedbackText]=useState<Record<string,string>>({})
     const fgColor=(s:string)=>s==='Freigegeben'?'var(--signal)':s==='Abgelehnt'?'var(--red)':s==='Überarbeiten'?'var(--amber)':'var(--muted)'
     return (
       <div>
@@ -1699,7 +1837,7 @@ export default function App() {
         <div className="filter-row"><span className="filter-lbl">Kategorie</span>{['Alle',...DESIGN_KATS].map(k=><button key={k} className={`chip${fDKat===k?' on':''}`} onClick={()=>setFDKat(k)}>{k}</button>)}</div>
         <div className="filter-row" style={{marginBottom:'var(--sp5)'}}><span className="filter-lbl">Freigabe</span>{['Alle',...FREIGABE_STATUS].map(s=><button key={s} className={`chip${fDFG===s?' on':''}`} onClick={()=>setFDFG(s)}>{s}</button>)}</div>
         {loading?<div className="design-grid">{Array.from({length:4}).map((_,i)=><div key={i} className="card"><div className="skeleton" style={{paddingTop:'var(--patch-ratio)',display:'block'}}/><div style={{padding:'var(--sp3)'}}><div className="skeleton skeleton-title"/><div className="skeleton skeleton-meta"/></div></div>)}</div>
-          :gefilterteIdeen.length===0?<div className="card"><div className="empty"><div className="empty-icon">{Ico.design}</div><div className="empty-title">Noch keine Ideen</div><div className="empty-sub">Norman lädt hier Patch-Ideen und Design-Entwürfe hoch</div></div></div>
+          :gefilterteIdeen.length===0?<div className="card"><div className="empty"><div className="empty-icon">{Ico.design}</div><div className="empty-title">Noch keine Ideen</div><div className="empty-sub" style={{marginBottom:'var(--sp4)'}}>Patch-Ideen und Design-Entwürfe hochladen</div><button className="btn btn-primary btn-sm" onClick={()=>{setEditD(null);setModal('design')}}>+ Erste Idee hinzufügen</button></div></div>
           :<div className="design-grid">
             {gefilterteIdeen.map(idee=>(
               <div className="design-card" key={idee.id} onClick={()=>setDesignFlyout(idee)}>
@@ -1769,7 +1907,7 @@ export default function App() {
           <button className="btn btn-primary" onClick={()=>setModal('entscheidung')}>{Ico.plus} Entscheidung</button>
         </div>
         <div className="card">
-          {loading?<SkeletonList rows={4}/>:entscheid.length===0?<div className="empty"><div className="empty-icon">{Ico.decide}</div><div className="empty-title">Noch keine Entscheidungen</div><div className="empty-sub">Jede wichtige Entscheidung hier festhalten</div></div>
+          {loading?<SkeletonList rows={4}/>:entscheid.length===0?<div className="empty"><div className="empty-icon">{Ico.decide}</div><div className="empty-title">Noch keine Entscheidungen</div><div className="empty-sub" style={{marginBottom:'var(--sp4)'}}>Jede wichtige Entscheidung festhalten</div><button className="btn btn-primary btn-sm" onClick={()=>setModal('entscheidung')}>+ Erste Entscheidung</button></div>
             :entscheid.map(e=>(
               <div className="decision-row" key={e.id}>
                 <div className="decision-title">{e.titel}</div>
@@ -1849,7 +1987,11 @@ export default function App() {
               {n.icon}<span className="mobile-nav-label">{n.label.split(' ')[0]}</span>
             </button>
           ))}
-          <button className="mobile-nav-btn" onClick={()=>setSidebarOpen(o=>!o)}>{Ico.menu}<span className="mobile-nav-label">Mehr</span></button>
+          <button className="mobile-nav-btn" style={{position:'relative'}} onClick={()=>setSidebarOpen(o=>!o)}>
+            {Ico.menu}
+            {notifications.filter(n=>!n.gelesen).length>0&&<div style={{position:'absolute',top:4,right:8,width:8,height:8,borderRadius:'50%',background:'var(--red)',border:'1.5px solid var(--bg)'}}/>}
+            <span className="mobile-nav-label">Mehr</span>
+          </button>
         </div>
       </nav>
 
