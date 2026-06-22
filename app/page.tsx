@@ -2069,7 +2069,7 @@ export default function App() {
         </div>
       </nav>
 
-      {flyout&&<TaskFlyout/>}
+      {flyout&&<TaskFlyout/>} 
       {designFlyout&&<DesignStudioFlyout/>}
       {modal==='aufgabe'&&<AufgabeModal/>}
       {modal==='entscheidung'&&<EntscheidungModal/>}
