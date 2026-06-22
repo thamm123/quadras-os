@@ -433,7 +433,7 @@ export default function App() {
         </div>
         {editable&&(
           <div className="a-actions">
-            {a.status==='Offen'&&<button className="icon-btn" title="In Arbeit setzen" style={{fontSize:10,fontFamily:'var(--font-mono)',width:'auto',padding:'0 6px',color:'var(--amber)'}} onClick={async()=>{setAufgaben(prev=>prev.map(x=>x.id===a.id?{...x,status:'In Arbeit'}:x));await supabase.from('aufgaben').update({status:'In Arbeit'}).eq('id',a.id)}}>▶</button>}
+            {a.status==='Offen'&&<button className="icon-btn" title="In Arbeit setzen" style={{fontSize:9,fontFamily:'var(--font-mono)',width:'auto',padding:'0 5px',color:'var(--amber)',fontWeight:700,letterSpacing:0}} onClick={async e=>{e.stopPropagation();setAufgaben(prev=>prev.map(x=>x.id===a.id?{...x,status:'In Arbeit'}:x));await supabase.from('aufgaben').update({status:'In Arbeit'}).eq('id',a.id)}}>▶</button>}
             <button className="icon-btn" onClick={()=>{setEditA(a);setModal('aufgabe')}}>{Ico.edit}</button>
             <button className="icon-btn del" onClick={()=>delAufgabe(a)}>{Ico.trash}</button>
           </div>
@@ -469,22 +469,29 @@ export default function App() {
 
     const addComment=async()=>{
       if(!newComment.trim()&&!commentFile) return
+      // Capture file reference BEFORE clearing state
+      const fileToUpload = commentFile
+      const commentText = newComment.trim()
+      // Clear UI immediately for responsiveness
+      setNewComment('')
+      setCommentFile(null)
+      // Upload file first, get URL
       let anhang_url='', anhang_name='', anhang_typ=''
-      // FIX: Upload FIRST before optimistic update so URL is available
-      if(commentFile){
-        const fname=`${Date.now()}_${commentFile.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`
-        const {error}=await supabase.storage.from('kommentar-anhaenge').upload(fname,commentFile)
+      if(fileToUpload){
+        const fname=`${Date.now()}_${fileToUpload.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`
+        const {error}=await supabase.storage.from('kommentar-anhaenge').upload(fname,fileToUpload)
         if(!error){
           const {data}=supabase.storage.from('kommentar-anhaenge').getPublicUrl(fname)
-          anhang_url=data.publicUrl; anhang_name=commentFile.name
-          anhang_typ=commentFile.type.startsWith('image/')?'bild':'datei'
+          anhang_url=data.publicUrl
+          anhang_name=fileToUpload.name
+          anhang_typ=fileToUpload.type.startsWith('image/')?'bild':'datei'
+        } else {
+          toast('Datei-Upload fehlgeschlagen','error')
         }
-        setCommentFile(null)
       }
-      const payload={aufgabe_id:a.id,person:aktiv,kommentar:newComment.trim(),anhang_url,anhang_name,anhang_typ}
-      // Optimistic update AFTER upload - URL is now correct
+      // Now add to UI with correct URL
+      const payload={aufgabe_id:a.id,person:aktiv,kommentar:commentText,anhang_url,anhang_name,anhang_typ}
       setComments(prev=>[...prev,{...payload,id:'tmp-'+Date.now(),created_at:new Date().toISOString()}])
-      setNewComment('')
       await supabase.from('aufgabe_comments').insert(payload)
       // Notifications
       await notifyAll(aktiv,'kommentar',a.titel,`${aktiv}: ${newComment.trim().substring(0,60)}${a.deadline?' · fällig '+fmtDate(a.deadline):''}`,a.id,'aufgabe')
@@ -619,12 +626,15 @@ export default function App() {
                       value={newComment} onChange={e=>setNewComment(e.target.value)}
                       onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();addComment()}}}/>
                     {commentFile&&(
-                      <div style={{display:'flex',alignItems:'center',gap:6,marginTop:4,padding:'4px 8px',background:'var(--signal-bg)',borderRadius:'var(--r-sm)'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6,padding:'6px 10px',background:'var(--signal-bg)',borderRadius:'var(--r-md)',border:'1px solid rgba(26,107,70,0.15)'}}>
                         {commentFile.type.startsWith('image/')
-                          ?<img src={URL.createObjectURL(commentFile)} alt={commentFile.name} style={{width:28,height:28,objectFit:'cover',borderRadius:3,flexShrink:0}}/>
-                          :<span style={{fontSize:14}}>📎</span>}
-                        <span style={{fontSize:'var(--text-xs)',color:'var(--signal)',flex:1,fontFamily:'var(--font-mono)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{commentFile.name}</span>
-                        <button className="icon-btn" style={{width:16,height:16}} onClick={()=>setCommentFile(null)}>×</button>
+                          ?<img src={URL.createObjectURL(commentFile)} alt={commentFile.name} style={{width:32,height:32,objectFit:'cover',borderRadius:4,flexShrink:0,border:'1px solid var(--border2)'}}/>
+                          :<div style={{width:32,height:32,background:'rgba(26,107,70,0.1)',borderRadius:4,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:16}}>📎</div>}
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:'var(--text-xs)',color:'var(--signal)',fontWeight:600,fontFamily:'var(--font-mono)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{commentFile.name}</div>
+                          <div style={{fontSize:9,color:'var(--muted)',fontFamily:'var(--font-mono)'}}>{Math.round(commentFile.size/1024)}KB · {commentFile.type.startsWith('image/')?'Bild':'Datei'}</div>
+                        </div>
+                        <button onClick={()=>setCommentFile(null)} style={{width:20,height:20,borderRadius:'50%',border:'none',background:'rgba(26,107,70,0.15)',cursor:'pointer',color:'var(--signal)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,flexShrink:0}}>×</button>
                       </div>
                     )}
                   </div>
@@ -1049,7 +1059,7 @@ export default function App() {
         <div className="cockpit-hero">
           <div className="cockpit-role"><div className="cockpit-dot" style={{background:PERSON_HEX[aktiv]}}/>{ap.role}</div>
           <div className="cockpit-name">{aktiv}</div>
-          <div className="cockpit-meta">{new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
+          <div className="cockpit-meta">{new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · KW {Math.ceil((new Date().getDate()+new Date(new Date().getFullYear(),new Date().getMonth(),1).getDay())/7)}</div>
           {(()=>{const todayTasks=aufgaben.filter(a=>(a.personen||[a.person]).includes(aktiv)&&a.deadline===t&&a.status!=='Erledigt');return todayTasks.length>0&&(
             <div style={{marginTop:'var(--sp4)',paddingTop:'var(--sp4)',borderTop:'1px solid rgba(255,255,255,0.08)'}}>
               <div style={{fontFamily:'var(--font-mono)',fontSize:10,color:'rgba(255,255,255,0.3)',textTransform:'uppercase',letterSpacing:'0.12em',marginBottom:'var(--sp2)'}}>Heute fällig — {todayTasks.length} Aufgabe{todayTasks.length>1?'n':''}</div>
@@ -1404,7 +1414,7 @@ export default function App() {
               const r=bellRef.current.getBoundingClientRect()
               setNotifPos({top:r.bottom+8,right:Math.max(16,window.innerWidth-r.right)})
             }
-            setNotifOpen(o=>!o);if(!notifOpen)markAllRead()
+            setNotifOpen(o=>!o)
           }}
           style={{width:34,height:34,borderRadius:'50%',border:'1px solid var(--border2)',background:unread>0?'var(--ink)':'rgba(255,255,255,0.7)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',position:'relative',transition:'all var(--anim-micro)',backdropFilter:'blur(8px)',color:unread>0?'#fff':'var(--mid)'}}>
           <svg style={{width:15,height:15,stroke:unread>0?'#fff':'var(--mid)'}} viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
@@ -1422,8 +1432,8 @@ export default function App() {
                 {notifications.length===0&&<div style={{padding:'var(--sp8)',textAlign:'center',fontSize:'var(--text-sm)',color:'var(--muted)'}}>Keine Benachrichtigungen</div>}
                 {notifications.slice(0,20).map(n=>(
                   <div key={n.id} style={{display:'flex',gap:'var(--sp3)',padding:'var(--sp3) var(--sp4)',borderBottom:'1px solid var(--border)',background:n.gelesen?'transparent':'rgba(62,111,90,0.04)',transition:'background var(--anim-micro)'}}>
-                    <div style={{fontSize:16,flexShrink:0,marginTop:1,cursor:n.entity_id?'pointer':'default'}} onClick={()=>{if(n.entity_id){const a=aufgaben.find(x=>x.id===n.entity_id);if(a)setFlyout(a)};setNotifOpen(false)}}>{typIcon(n.typ)}</div>
-                    <div style={{flex:1,minWidth:0,cursor:n.entity_id?'pointer':'default'}} onClick={()=>{if(n.entity_id){const a=aufgaben.find(x=>x.id===n.entity_id);if(a)setFlyout(a)};setNotifOpen(false)}}>
+                    <div style={{fontSize:16,flexShrink:0,marginTop:1,cursor:n.entity_id?'pointer':'default'}} onClick={()=>{if(n.entity_id){const a=aufgaben.find(x=>x.id===n.entity_id);if(a){setFlyout(a);setNotifOpen(false)}}}}>{typIcon(n.typ)}</div>
+                    <div style={{flex:1,minWidth:0,cursor:n.entity_id?'pointer':'default'}} onClick={()=>{if(n.entity_id){const a=aufgaben.find(x=>x.id===n.entity_id);if(a){setFlyout(a);setNotifOpen(false)}}}}>
                       <div style={{fontSize:'var(--text-sm)',fontWeight:n.gelesen?400:600,color:'var(--ink)',marginBottom:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{n.titel}</div>
                       <div style={{fontSize:'var(--text-xs)',color:'var(--mid)',lineHeight:1.4}}>{n.nachricht}</div>
                       <div style={{fontSize:10,color:'var(--muted)',marginTop:2,fontFamily:'var(--font-mono)'}}>{new Date(n.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
