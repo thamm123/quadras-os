@@ -6,9 +6,9 @@ export const supabase = createClient(
 )
 
 export const PERSONEN = [
-  { name: 'Alexander' as const, role: 'Founder · Product',  color: 'var(--person-alexander)' },
-  { name: 'Norman'    as const, role: 'Operations',          color: 'var(--person-norman)' },
-  { name: 'Anna'      as const, role: 'Design · Content',   color: 'var(--person-anna)' },
+  { name: 'Alexander' as const, role: 'Product · Webseite',  color: 'var(--person-alexander)' },
+  { name: 'Norman'    as const, role: 'Design · Content',          color: 'var(--person-norman)' },
+  { name: 'Anna'      as const, role: 'Supply Chain',   color: 'var(--person-anna)' },
 ]
 export type PersonName = 'Alexander' | 'Norman' | 'Anna'
 
