@@ -1788,10 +1788,7 @@ export default function App() {
             <div className="form-row" style={{marginBottom:'var(--sp3)'}}>
               <div className="form-group" style={{marginBottom:0}}>
                 <label className="form-label">Phase</label>
-                <select className="form-input" value={newPhase} onChange={e=>setNewPhase(e.target.value)}>
-                  {phasen.map(p=><option key={p}>{p}</option>)}
-                  <option value="Phase 6 · Neue Phase">+ Neue Phase</option>
-                </select>
+                <input className="form-input" placeholder="z.B. 01 Foundation & Governance" value={newPhase} onChange={e=>setNewPhase(e.target.value)}/>
               </div>
               <div className="form-group" style={{marginBottom:0}}>
                 <label className="form-label">Verantwortlich</label>
