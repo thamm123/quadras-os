@@ -1030,16 +1030,14 @@ export default function App() {
         const r=bellRef.current.getBoundingClientRect()
         const panelWidth=360
         const padding=16
-        // Berechne ob Panel rechts oder links der Bell erscheinen soll
-        const spaceRight=window.innerWidth-r.left
-        const rightFromEdge=Math.max(padding, window.innerWidth - r.right + 8)
-        // Wenn Panel nach rechts über den Bildschirm gehen würde, linksbündig zur Bell
-        const finalRight=spaceRight<panelWidth+padding
-          ? Math.max(padding, window.innerWidth - r.right + 8)
-          : rightFromEdge
+        const rightFromEdge=window.innerWidth-r.right+8
+        const clampedRight=Math.min(
+          Math.max(padding, rightFromEdge),
+          window.innerWidth-panelWidth-padding
+        )
         setNotifPos({
-          top: r.bottom + 8,
-          right: finalRight
+          top: r.bottom+8,
+          right: Math.max(padding, clampedRight)
         })
       }
       setNotifOpen(o=>!o)
