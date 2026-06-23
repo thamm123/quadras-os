@@ -1028,10 +1028,18 @@ export default function App() {
       e.stopPropagation()
       if(bellRef.current){
         const r=bellRef.current.getBoundingClientRect()
+        const panelWidth=360
+        const padding=16
+        // Berechne ob Panel rechts oder links der Bell erscheinen soll
+        const spaceRight=window.innerWidth-r.left
+        const rightFromEdge=Math.max(padding, window.innerWidth - r.right + 8)
+        // Wenn Panel nach rechts über den Bildschirm gehen würde, linksbündig zur Bell
+        const finalRight=spaceRight<panelWidth+padding
+          ? Math.max(padding, window.innerWidth - r.right + 8)
+          : rightFromEdge
         setNotifPos({
           top: r.bottom + 8,
-          // FIX: position from right edge of viewport, aligned to bell button
-          right: Math.max(16, window.innerWidth - r.right - 4)
+          right: finalRight
         })
       }
       setNotifOpen(o=>!o)
