@@ -1600,69 +1600,80 @@ export default function App() {
     }
     const missionLines=weeklyMission.split('\n').filter(l=>l.trim()!=='')
 
+    const kw=(()=>{const d=new Date();const dayNum=d.getDay()||7;d.setDate(d.getDate()+4-dayNum);const yearStart=new Date(d.getFullYear(),0,1);return Math.ceil((((d.getTime()-yearStart.getTime())/86400000)+1)/7)})()
+    const todayTasks=aufgaben.filter(a=>(a.personen||[a.person]).includes(aktiv)&&a.deadline===t&&a.status!=='Erledigt')
+
     return (
       <div>
-        {/* Executive Summary */}
-        <div className="card" style={{marginBottom:'var(--sp4)',borderLeft:`3px solid ${statusColor}`}}>
-          <div style={{padding:'var(--sp4)'}}>
-            <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
-              <div>
-                <div style={{fontSize:'var(--text-xs)',fontWeight:600,color:'var(--muted)',marginBottom:'var(--sp1)'}}>Projektstatus</div>
-                <div style={{fontSize:'var(--text-lg)',fontWeight:700,color:statusColor}}>{statusText}</div>
-              </div>
-              <div style={{textAlign:'right'}}>
-                <div style={{fontFamily:'var(--font-display)',fontSize:52,fontWeight:700,color:statusColor,letterSpacing:'-2px',lineHeight:1}}>{gesamtPct}%</div>
-                <div style={{fontSize:'var(--text-xs)',color:'var(--muted)',marginTop:2}}>aus Hauptaufgaben</div>
-              </div>
+        {/* ── 1. Page Header: Name + Datum ── */}
+        <div className="heute-page-header">
+          <div>
+            <div className="heute-greeting">Guten Morgen, {aktiv}.</div>
+            <div className="heute-subline">
+              <span className="heute-dot" style={{background:PERSON_HEX[aktiv]}}/>
+              {ap.role}
             </div>
-            <div className="launch-bar-phases" style={{marginBottom:'var(--sp2)'}}>
+          </div>
+          <div className="heute-date-block">
+            <div className="heute-date-main">{new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long'})}</div>
+            <div className="heute-date-kw">KW {kw}</div>
+          </div>
+        </div>
+
+        {/* ── 2. Projektstatus Strip ── */}
+        <div className="status-strip">
+          <div className="status-strip-left">
+            <div className="status-strip-label">Projektstatus</div>
+            <div className="status-strip-value" style={{color:statusColor}}>{statusText}</div>
+            <div className="status-strip-chips">
+              {blockerAufgaben.length>0&&<span className="status-chip status-chip-red">{blockerAufgaben.length} Blocker</span>}
+              {ueberfaellig>0&&<span className="status-chip status-chip-red">{ueberfaellig} überfällig</span>}
+              {designFeedbackOffen.length>0&&<span className="status-chip status-chip-amber" style={{cursor:'pointer'}} onClick={()=>setView('design')}>{designFeedbackOffen.length} Design-Feedback</span>}
+              {blockerAufgaben.length===0&&ueberfaellig===0&&designFeedbackOffen.length===0&&<span className="status-chip status-chip-green">Keine kritischen Probleme</span>}
+            </div>
+            <div className="launch-bar-phases" style={{marginTop:12,maxWidth:320}}>
               {phasen.map(phase=>{
                 const items=hauptaufgaben.filter(a=>a.phase===phase)
                 const pct=items.length?Math.round(items.filter(a=>a.status==='Erledigt').length/items.length*100):0
                 return <div key={phase} className="launch-bar-phase" title={`${phase}: ${pct}%`}><div className="launch-bar-phase-fill" style={{width:`${pct}%`}}/></div>
               })}
             </div>
-            <div style={{display:'flex',gap:'var(--sp4)',flexWrap:'wrap',marginTop:'var(--sp2)'}}>
-              {blockerAufgaben.length>0&&<span style={{fontSize:'var(--text-sm)',color:'var(--red)',fontWeight:600}}>{blockerAufgaben.length} Blocker aktiv</span>}
-              {designFeedbackOffen.length>0&&<span style={{fontSize:'var(--text-sm)',color:'var(--amber)',fontWeight:600,cursor:'pointer'}} onClick={()=>setView('design')}>{designFeedbackOffen.length} Design{designFeedbackOffen.length===1?' wartet':' warten'} auf Feedback</span>}
-              {ueberfaellig>0&&<span style={{fontSize:'var(--text-sm)',color:'var(--red)',fontWeight:600}}>{ueberfaellig} überfällig</span>}
-              {blockerAufgaben.length===0&&designFeedbackOffen.length===0&&ueberfaellig===0&&<span style={{fontSize:'var(--text-sm)',color:'var(--signal)',fontWeight:600}}>Keine kritischen Probleme</span>}
-            </div>
+          </div>
+          <div className="status-strip-pct">
+            <div style={{fontSize:56,fontWeight:700,letterSpacing:'-3px',lineHeight:1,color:statusColor}}>{gesamtPct}%</div>
+            <div style={{fontSize:'var(--text-xs)',color:'var(--muted)',fontWeight:500,marginTop:4}}>Hauptaufgaben</div>
           </div>
         </div>
 
+        {/* ── 3. Metriken ── */}
+        <div className="metrics-row">
+          <div className="metric"><div className="metric-num" style={{color:PERSON_HEX[aktiv]}}>{meineOffen}</div><div className="metric-lbl">Meine offenen</div><div className="metric-bar" style={{marginTop:10}}><div className="metric-bar-fill" style={{width:`${donePct}%`,background:PERSON_HEX[aktiv]}}/></div></div>
+          <div className="metric"><div className="metric-num" style={{color:ueberfaellig>0?'var(--red)':'var(--signal)'}}>{ueberfaellig}</div><div className="metric-lbl">Überfällig</div></div>
+          <div className="metric"><div className="metric-num" style={{color:blockerAufgaben.length>0?'var(--red)':'var(--ink)'}}>{blockerAufgaben.length}</div><div className="metric-lbl">Blocker aktiv</div></div>
+          <div className="metric"><div className="metric-num" style={{color:designFeedbackOffen.length>0?'var(--amber)':'var(--ink)'}}>{designFeedbackOffen.length}</div><div className="metric-lbl">Design-Feedback</div></div>
+        </div>
+
+        {/* ── 4. Suchleiste ── */}
         <div className="command-bar" onClick={()=>setCmdOpen(true)} role="button" tabIndex={0}>
           <svg className="command-icon" style={{width:16,height:16}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <span className="command-placeholder">Suchen, navigieren, anlegen…</span>
           <span className="command-hint">⌘K</span>
         </div>
 
-        <div className="cockpit-hero">
-          <div className="cockpit-role"><div className="cockpit-dot" style={{background:PERSON_HEX[aktiv]}}/>{ap.role}</div>
-          <div className="cockpit-name">{aktiv}</div>
-          <div className="cockpit-meta">{new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · KW {(()=>{const d=new Date();const dayNum=d.getDay()||7;d.setDate(d.getDate()+4-dayNum);const yearStart=new Date(d.getFullYear(),0,1);return Math.ceil((((d.getTime()-yearStart.getTime())/86400000)+1)/7)})()}</div>
-          {(()=>{const todayTasks=aufgaben.filter(a=>(a.personen||[a.person]).includes(aktiv)&&a.deadline===t&&a.status!=='Erledigt');return todayTasks.length>0&&(
-            <div style={{marginTop:'var(--sp4)',paddingTop:'var(--sp4)',borderTop:'0.5px solid rgba(10,12,15,0.08)'}}>
-              <div style={{fontSize:11,fontWeight:600,color:'var(--muted)',marginBottom:'var(--sp2)'}}>Heute fällig · {todayTasks.length} Aufgabe{todayTasks.length>1?'n':''}</div>
-              <div style={{display:'flex',flexDirection:'column',gap:5}}>
-                {todayTasks.slice(0,3).map(a=>(
-                  <div key={a.id} style={{display:'flex',alignItems:'center',gap:'var(--sp2)',cursor:'pointer'}} onClick={()=>setFlyout(a)}>
-                    <div style={{width:5,height:5,borderRadius:'50%',background:a.prioritaet==='Hoch'?'var(--red)':'var(--signal)',flexShrink:0}}/>
-                    <span style={{fontSize:'var(--text-sm)',color:'var(--slate)',flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{a.titel}</span>
-                  </div>
-                ))}
-                {todayTasks.length>3&&<div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>+ {todayTasks.length-3} weitere</div>}
-              </div>
-            </div>
-          )})()}
-        </div>
-
-        <div className="metrics-row">
-          <div className="metric"><div className="metric-num" style={{color:PERSON_HEX[aktiv]}}>{meineOffen}</div><div className="metric-lbl">Meine offenen</div><div className="metric-bar"><div className="metric-bar-fill" style={{width:`${donePct}%`,background:PERSON_HEX[aktiv]}}/></div></div>
-          <div className="metric"><div className="metric-num" style={{color:ueberfaellig>0?'var(--red)':'var(--signal)'}}>{ueberfaellig}</div><div className="metric-lbl">Überfällig</div></div>
-          <div className="metric"><div className="metric-num" style={{color:blockerAufgaben.length>0?'var(--red)':'var(--ink)'}}>{blockerAufgaben.length}</div><div className="metric-lbl">Blocker aktiv</div></div>
-          <div className="metric"><div className="metric-num" style={{color:designFeedbackOffen.length>0?'var(--amber)':'var(--ink)'}}>{designFeedbackOffen.length}</div><div className="metric-lbl">Design-Feedback</div></div>
-        </div>
+        {/* Heute fällig — kompakt unter Suche wenn vorhanden */}
+        {todayTasks.length>0&&(
+          <div className="heute-due-strip">
+            <span className="heute-due-label">Heute fällig</span>
+            {todayTasks.slice(0,4).map(a=>(
+              <button key={a.id} className="heute-due-chip" onClick={()=>setFlyout(a)}
+                style={{borderColor:a.prioritaet==='Hoch'?'rgba(185,28,28,0.25)':'rgba(10,12,15,0.1)',color:a.prioritaet==='Hoch'?'var(--red)':'var(--slate)'}}>
+                <span style={{width:5,height:5,borderRadius:'50%',background:a.prioritaet==='Hoch'?'var(--red)':'var(--signal)',flexShrink:0,display:'inline-block'}}/>
+                {a.titel}
+              </button>
+            ))}
+            {todayTasks.length>4&&<span style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>+{todayTasks.length-4}</span>}
+          </div>
+        )}
 
         {/* ── Zone B: 2-Spalten Grid ── */}
         <div className="heute-grid">
