@@ -1602,13 +1602,14 @@ export default function App() {
 
     const kw=(()=>{const d=new Date();const dayNum=d.getDay()||7;d.setDate(d.getDate()+4-dayNum);const yearStart=new Date(d.getFullYear(),0,1);return Math.ceil((((d.getTime()-yearStart.getTime())/86400000)+1)/7)})()
     const todayTasks=aufgaben.filter(a=>(a.personen||[a.person]).includes(aktiv)&&a.deadline===t&&a.status!=='Erledigt')
+    const grussWort=(()=>{const h=new Date().getHours();return h<12?'Guten Morgen':h<18?'Guten Tag':'Guten Abend'})()
 
     return (
       <div>
         {/* ── 1. Page Header: Name + Datum ── */}
         <div className="heute-page-header">
           <div>
-            <div className="heute-greeting">Guten Morgen, {aktiv}.</div>
+            <div className="heute-greeting">{grussWort}, {aktiv}.</div>
             <div className="heute-subline">
               <span className="heute-dot" style={{background:PERSON_HEX[aktiv]}}/>
               {ap.role}
