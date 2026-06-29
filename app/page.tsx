@@ -324,11 +324,12 @@ function CommentRow({c,aktiv,onDelete}:CommentRowProps) {
         )}
       </div>
       {c.kommentar&&<div className="comment-text">
-        {c.kommentar.split(/(@(?:Alexander|Norman|Anna))/g).map((part,i)=>
-          /^@(Alexander|Norman|Anna)$/.test(part)
-            ?<span key={i} style={{color:PERSON_HEX[part.slice(1)]||'var(--signal)',fontWeight:700}}>{part}</span>
+        {c.kommentar.split(/(@(?:alexander|norman|anna))/gi).map((part,i)=>{
+          const name=PERSONEN.find(p=>part.toLowerCase()==='@'+p.name.toLowerCase())
+          return name
+            ?<span key={i} style={{color:PERSON_HEX[name.name]||'var(--signal)',fontWeight:700}}>@{name.name}</span>
             :<span key={i}>{part}</span>
-        )}
+        })}
       </div>}
       {c.anhang_url&&c.anhang_url.startsWith('https://')&&(
         <div style={{marginTop:'var(--sp2)'}}>
@@ -894,10 +895,11 @@ export default function App() {
       }
 
       await notifyAll(aktiv,'kommentar',a.titel,`${aktiv}: ${commentText.substring(0,60)}${a.deadline?' · fällig '+fmtDate(a.deadline):''}`,a.id,'aufgabe')
-      const mentions=commentText.match(/@(Alexander|Norman|Anna)/g)||[]
+      const mentions=commentText.match(/@(alexander|norman|anna)/gi)||[]
       for(const m of mentions){
-        const name=m.slice(1) as PersonName
-        if(name!==aktiv){
+        const found=PERSONEN.find(p=>m.toLowerCase()==='@'+p.name.toLowerCase())
+        const name=found?.name as PersonName|undefined
+        if(name&&name!==aktiv){
           await supabase.from('notifications').insert({fuer:name,von:aktiv,typ:'mention',titel:a.titel,nachricht:`${aktiv} hat dich erwähnt: ${commentText.substring(0,80)}`,entity_id:a.id,entity_typ:'aufgabe'})
         }
       }
