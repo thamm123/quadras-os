@@ -1660,241 +1660,246 @@ export default function App() {
           <div className="metric"><div className="metric-num" style={{color:designFeedbackOffen.length>0?'var(--amber)':'var(--ink)'}}>{designFeedbackOffen.length}</div><div className="metric-lbl">Design-Feedback</div></div>
         </div>
 
-        <div className="card" style={{marginBottom:'var(--sp4)'}}>
-          <div className="section-label">Diese & nächste Woche</div>
-          <div className="week-timeline">
-            {weekDays.map(day=>{
-              const dayTasks=alle7Tage.filter(a=>a.deadline===day)
-              return (
-                <div key={day} className={`week-day${day===t?' today':''}`}>
-                  <div className="week-day-label">{new Date(day+'T12:00').toLocaleDateString('de-DE',{weekday:'short'})}</div>
-                  <div className="week-day-date">{new Date(day+'T12:00').getDate()}</div>
-                  <div className="week-day-tasks">
-                    {dayTasks.map(a=>(
-                      <div key={a.id} className="week-day-task-dot"
-                        title={`${a.titel} · ${a.person}${a.status==='Erledigt'?' ✓':''}`}
-                        style={{
-                          background: a.status==='Erledigt'?'var(--bg2)':PERSON_HEX[a.person]||'var(--slate)',
-                          color: a.status==='Erledigt'?'var(--muted)':'var(--surface)',
-                          border: a.status==='Erledigt'?'1px solid var(--border2)':'none',
-                          textDecoration: a.status==='Erledigt'?'line-through':'none',
-                          opacity: a.status==='Erledigt'?0.5:1,
-                        }}
-                        onClick={()=>setFlyout(a)}>
-                        {a.person[0]}
+        {/* ── Zone B: 2-Spalten Grid ── */}
+        <div className="heute-grid">
+
+          {/* Linke Spalte — Arbeit & Prioritäten */}
+          <div className="heute-main">
+
+            <div className="card" style={{marginBottom:'var(--sp4)'}}>
+              <div className="section-label">Diese & nächste Woche</div>
+              <div className="week-timeline">
+                {weekDays.map(day=>{
+                  const dayTasks=alle7Tage.filter(a=>a.deadline===day)
+                  return (
+                    <div key={day} className={`week-day${day===t?' today':''}`}>
+                      <div className="week-day-label">{new Date(day+'T12:00').toLocaleDateString('de-DE',{weekday:'short'})}</div>
+                      <div className="week-day-date">{new Date(day+'T12:00').getDate()}</div>
+                      <div className="week-day-tasks">
+                        {dayTasks.map(a=>(
+                          <div key={a.id} className="week-day-task-dot"
+                            title={`${a.titel} · ${a.person}${a.status==='Erledigt'?' ✓':''}`}
+                            style={{background:a.status==='Erledigt'?'var(--bg2)':PERSON_HEX[a.person]||'var(--slate)',color:a.status==='Erledigt'?'var(--muted)':'var(--surface)',border:a.status==='Erledigt'?'1px solid var(--border2)':'none',opacity:a.status==='Erledigt'?0.5:1}}
+                            onClick={()=>setFlyout(a)}>
+                            {a.person[0]}
+                          </div>
+                        ))}
+                        {dayTasks.length===0&&<div style={{height:'var(--sp5)'}}/>}
                       </div>
-                    ))}
-                    {dayTasks.length===0&&<div style={{height:'var(--sp5)'}}/>}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        <div className="cockpit-grid">
-          <div className="card">
-            {kritisch.length>0?<div className="section-label-red">Kritisch — sofort handeln ({kritisch.length})</div>:<div className="section-label">Kein kritischer Pfad</div>}
-            {loading?<SkeletonList rows={2}/>:kritisch.length===0
-              ?<div className="empty"><div className="empty-title c-signal">Alles im grünen Bereich</div></div>
-              :kritisch.slice(0,5).map(a=><AItem key={a.id} a={a} editable/>)}
-          </div>
-          <div className="card">
-            <div className="section-label">Mein Fokus — Top 3</div>
-            {loading?<SkeletonList rows={3}/>:meineFokus.length===0
-              ?<div className="empty"><div className="empty-title c-signal">Keine offenen Aufgaben</div></div>
-              :meineFokus.map(a=><AItem key={a.id} a={a} editable/>)}
-          </div>
-        </div>
-
-        {blockerAufgaben.length>0&&(
-          <div className="card" style={{marginBottom:'var(--sp4)',borderLeft:'2px solid var(--red)'}}>
-            <div className="section-label-red">Blocker — müssen sofort gelöst werden ({blockerAufgaben.length})</div>
-            {blockerAufgaben.map(a=>(
-              <div key={a.id} className="aufgabe" style={{borderBottom:'1px solid var(--border)'}}>
-                <div className="a-body">
-                  <div className="a-titel" onClick={()=>setFlyout(a)} style={{cursor:'pointer'}}>{a.titel}</div>
-                  <div style={{fontSize:'var(--text-sm)',color:'var(--red)',marginTop:'var(--sp1)',fontWeight:600}}>Blocker: {a.blocker}</div>
-                  <div className="a-meta-line" style={{marginTop:'var(--sp1)'}}>
-                    <span style={{color:PERSON_HEX[a.person]||'var(--mid)',fontWeight:600}}>{a.person}</span>
-                    <span className="a-meta-dot"/><span>{a.projekt}</span>
-                  </div>
-                </div>
-                <button className="icon-btn" onClick={()=>setFlyout(a)}>{Ico.edit}</button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {designFeedbackOffen.length>0&&(
-          <div className="card" style={{marginBottom:'var(--sp4)',borderLeft:'2px solid var(--amber)'}}>
-            <div style={{padding:'var(--sp3) var(--sp4) var(--sp2)',borderBottom:'1px solid var(--amber-bg)',background:'var(--amber-bg)',fontSize:'var(--text-xs)',fontWeight:700,color:'var(--amber)',textTransform:'uppercase',letterSpacing:'0.1em',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <span>Design wartet auf Feedback ({designFeedbackOffen.length})</span>
-              <button className="btn btn-xs btn-amber" onClick={()=>setView('design')}>Design Studio öffnen</button>
-            </div>
-            {designFeedbackOffen.slice(0,4).map(i=>(
-              <div key={i.id} style={{display:'flex',alignItems:'center',gap:'var(--sp3)',padding:'var(--sp2) var(--sp4)',borderBottom:'1px solid var(--border)',cursor:'pointer'}} onClick={()=>{setDesignFlyout(i);setView('design')}}>
-                <div style={{width:36,height:36,borderRadius:'var(--r-patch)',background:'var(--bg2)',overflow:'hidden',flexShrink:0}}>
-                  {i.url&&i.url.startsWith('https://')?<img src={i.url} alt={i.titel} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'var(--text-xs)',color:'var(--muted)'}}>{i.kategorie[0]}</div>}
-                </div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:'var(--text-base)',fontWeight:500,color:'var(--ink)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{i.titel}</div>
-                  <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>{i.kategorie} · {i.von} · <span style={{color:'var(--amber)',fontWeight:600}}>{i.freigabe==='Überarbeiten'?'Überarbeiten':'Feedback ausstehend'}</span></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {areaStats.length>0&&(
-          <>
-            <div style={{fontSize:'var(--text-md)',fontWeight:700,marginBottom:'var(--sp3)',color:'var(--ink)'}}>Bereichsstatus</div>
-            <div className="area-grid" style={{marginBottom:'var(--sp5)'}}>
-              {areaStats.map(a=>{
-                const pct=a.total>0?Math.round(a.done/a.total*100):0
-                const ampel=a.krit>0?'var(--red)':a.offen===0?'var(--signal)':pct>70?'var(--signal)':'var(--amber)'
-                return (
-                  <div key={a.proj} className="area-card" onClick={()=>{setFProjekt(a.proj);setView('aufgaben')}} style={{borderTop:`2px solid ${ampel}`}}>
-                    <div className="area-name" title={a.proj}>{a.proj}</div>
-                    <div className="area-stats">
-                      {a.offen} offen
-                      {a.krit>0&&<span style={{color:'var(--red)',marginLeft:'var(--sp2)',fontWeight:700}}>· {a.krit} kritisch</span>}
-                      {(()=>{const meine=aufgaben.filter(x=>x.projekt===a.proj&&(x.personen||[x.person]).includes(aktiv)&&x.status!=='Erledigt').length;return meine>0&&<span style={{color:PERSON_HEX[aktiv]||'var(--slate)',marginLeft:'var(--sp2)',fontWeight:600}}>· {meine} meine</span>})()}
                     </div>
-                    <div className="area-bar"><div className="area-bar-fill" style={{width:`${pct}%`,background:ampel}}/></div>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="cockpit-grid">
+              <div className="card">
+                {kritisch.length>0?<div className="section-label-red">Kritisch — sofort handeln ({kritisch.length})</div>:<div className="section-label">Kein kritischer Pfad</div>}
+                {loading?<SkeletonList rows={2}/>:kritisch.length===0
+                  ?<div className="empty"><div className="empty-title c-signal">Alles im grünen Bereich</div></div>
+                  :kritisch.slice(0,5).map(a=><AItem key={a.id} a={a} editable/>)}
+              </div>
+              <div className="card">
+                <div className="section-label">Mein Fokus — Top 3</div>
+                {loading?<SkeletonList rows={3}/>:meineFokus.length===0
+                  ?<div className="empty"><div className="empty-title c-signal">Keine offenen Aufgaben</div></div>
+                  :meineFokus.map(a=><AItem key={a.id} a={a} editable/>)}
+              </div>
+            </div>
+
+            {blockerAufgaben.length>0&&(
+              <div className="card" style={{marginBottom:'var(--sp4)',borderLeft:'2px solid var(--red)'}}>
+                <div className="section-label-red">Blocker — müssen sofort gelöst werden ({blockerAufgaben.length})</div>
+                {blockerAufgaben.map(a=>(
+                  <div key={a.id} className="aufgabe" style={{borderBottom:'1px solid var(--border)'}}>
+                    <div className="a-body">
+                      <div className="a-titel" onClick={()=>setFlyout(a)} style={{cursor:'pointer'}}>{a.titel}</div>
+                      <div style={{fontSize:'var(--text-sm)',color:'var(--red)',marginTop:'var(--sp1)',fontWeight:600}}>Blocker: {a.blocker}</div>
+                      <div className="a-meta-line" style={{marginTop:'var(--sp1)'}}>
+                        <span style={{color:PERSON_HEX[a.person]||'var(--mid)',fontWeight:600}}>{a.person}</span>
+                        <span className="a-meta-dot"/><span>{a.projekt}</span>
+                      </div>
+                    </div>
+                    <button className="icon-btn" onClick={()=>setFlyout(a)}>{Ico.edit}</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {designFeedbackOffen.length>0&&(
+              <div className="card" style={{marginBottom:'var(--sp4)',borderLeft:'2px solid var(--amber)'}}>
+                <div style={{padding:'var(--sp3) var(--sp4) var(--sp2)',borderBottom:'1px solid var(--amber-bg)',background:'var(--amber-bg)',fontSize:'var(--text-xs)',fontWeight:700,color:'var(--amber)',textTransform:'uppercase',letterSpacing:'0.1em',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <span>Design wartet auf Feedback ({designFeedbackOffen.length})</span>
+                  <button className="btn btn-xs btn-amber" onClick={()=>setView('design')}>Studio öffnen</button>
+                </div>
+                {designFeedbackOffen.slice(0,3).map(i=>(
+                  <div key={i.id} style={{display:'flex',alignItems:'center',gap:'var(--sp3)',padding:'var(--sp2) var(--sp4)',borderBottom:'1px solid var(--border)',cursor:'pointer'}} onClick={()=>{setDesignFlyout(i);setView('design')}}>
+                    <div style={{width:36,height:36,borderRadius:'var(--r-sm)',background:'var(--bg2)',overflow:'hidden',flexShrink:0}}>
+                      {i.url&&i.url.startsWith('https://')?<img src={i.url} alt={i.titel} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'var(--text-xs)',color:'var(--muted)'}}>{i.kategorie[0]}</div>}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:'var(--text-base)',fontWeight:500,color:'var(--ink)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{i.titel}</div>
+                      <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>{i.kategorie} · <span style={{color:'var(--amber)',fontWeight:600}}>{i.freigabe==='Überarbeiten'?'Überarbeiten':'Feedback ausstehend'}</span></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {areaStats.length>0&&(
+              <>
+                <div style={{fontSize:'var(--text-md)',fontWeight:700,marginBottom:'var(--sp3)',color:'var(--ink)'}}>Bereichsstatus</div>
+                <div className="area-grid" style={{marginBottom:'var(--sp5)'}}>
+                  {areaStats.map(a=>{
+                    const pct=a.total>0?Math.round(a.done/a.total*100):0
+                    const ampel=a.krit>0?'var(--red)':a.offen===0?'var(--signal)':pct>70?'var(--signal)':'var(--amber)'
+                    return (
+                      <div key={a.proj} className="area-card" onClick={()=>{setFProjekt(a.proj);setView('aufgaben')}} style={{borderTop:`2px solid ${ampel}`}}>
+                        <div className="area-name" title={a.proj}>{a.proj}</div>
+                        <div className="area-stats">
+                          {a.offen} offen
+                          {a.krit>0&&<span style={{color:'var(--red)',marginLeft:'var(--sp2)',fontWeight:700}}>· {a.krit} kritisch</span>}
+                          {(()=>{const meine=aufgaben.filter(x=>x.projekt===a.proj&&(x.personen||[x.person]).includes(aktiv)&&x.status!=='Erledigt').length;return meine>0&&<span style={{color:PERSON_HEX[aktiv]||'var(--slate)',marginLeft:'var(--sp2)',fontWeight:600}}>· {meine} meine</span>})()}
+                        </div>
+                        <div className="area-bar"><div className="area-bar-fill" style={{width:`${pct}%`,background:ampel}}/></div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
+              <div style={{fontSize:'var(--text-md)',fontWeight:700,color:'var(--ink)'}}>Launch Readiness</div>
+              <div style={{display:'flex',alignItems:'center',gap:'var(--sp3)'}}>
+                <div style={{fontSize:'var(--text-sm)',color:readinessColor,fontWeight:700}}>{readinessDone}/{READINESS_ITEMS.length}</div>
+                <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>{readinessPct}%</div>
+              </div>
+            </div>
+            <div className="card" style={{marginBottom:'var(--sp5)'}}>
+              <div className="readiness-score-bar" style={{margin:'var(--sp3) var(--sp4) 0'}}>
+                <div className="readiness-score-fill" style={{width:`${readinessPct}%`,background:readinessColor}}/>
+              </div>
+              <div className="readiness-grid" style={{margin:'var(--sp3) var(--sp4) var(--sp4)'}}>
+                {READINESS_ITEMS.map(item=>(
+                  <ReadinessItem key={item.id} item={item} checked={!!readiness[item.id]}
+                    onToggle={()=>toggleReadiness(item.id)}
+                    onLabelSave={(label)=>updateReadinessLabel(item.id,label)}/>
+                ))}
+              </div>
+            </div>
+
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
+              <div style={{fontSize:'var(--text-md)',fontWeight:700,color:'var(--ink)'}}>Brand Readiness</div>
+              <div style={{display:'flex',alignItems:'center',gap:'var(--sp3)'}}>
+                <div style={{fontSize:'var(--text-sm)',color:brandColor,fontWeight:700}}>{brandDone}/{BRAND_ITEMS.length}</div>
+                <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>{brandPct}%</div>
+              </div>
+            </div>
+            <div className="card" style={{marginBottom:'var(--sp5)'}}>
+              <div className="readiness-score-bar" style={{margin:'var(--sp3) var(--sp4) 0'}}>
+                <div className="readiness-score-fill" style={{width:`${brandPct}%`,background:brandColor}}/>
+              </div>
+              <div className="readiness-grid" style={{margin:'var(--sp3) var(--sp4) var(--sp4)'}}>
+                {BRAND_ITEMS.map(item=>(
+                  <ReadinessItem key={item.id} item={item} checked={!!brandReadiness[item.id]}
+                    onToggle={()=>toggleBrandReadiness(item.id)}
+                    onLabelSave={(label)=>updateBrandLabel(item.id,label)}/>
+                ))}
+              </div>
+            </div>
+
+            <RiskLog risiken={risiken} aktiv={aktiv} onAdd={addRisiko} onDel={delRisiko}/>
+          </div>
+
+          {/* Rechte Spalte — Kontext & Team */}
+          <div className="heute-aside">
+
+            {offeneEntscheidungen.length>0&&(
+              <div style={{marginBottom:'var(--sp5)'}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
+                  <div style={{fontSize:'var(--text-md)',fontWeight:700,color:'var(--ink)'}}>Entscheidungen</div>
+                  <button className="btn btn-xs btn-secondary" onClick={()=>setView('entscheidungen')}>Alle →</button>
+                </div>
+                <div className="card">
+                  {offeneEntscheidungen.map((e,idx)=>(
+                    <div key={e.id} className="decision-queue-item">
+                      <div className="dq-index">{String(idx+1).padStart(2,'0')}</div>
+                      <div className="dq-body">
+                        <div className="dq-titel">{e.titel}</div>
+                        <div className="dq-meta">{e.projekt} · {fmtDate(e.datum)}{e.naechster_schritt&&<span style={{color:'var(--signal)'}}> · → {e.naechster_schritt}</span>}</div>
+                      </div>
+                      <div className="dq-actions">
+                        <button className="btn btn-xs btn-signal"
+                          onClick={()=>{
+                            setEditA({titel:`Folgeaufgabe: ${e.titel}`,beschreibung:`Aus Entscheidung vom ${fmtDate(e.datum)}: ${e.naechster_schritt||e.begruendung}`,person:aktiv,personen:[aktiv],projekt:e.projekt,prioritaet:'Hoch',status:'Offen',deadline:'',ergebnis:'',blocker:'',nummer:null,phase:'',sortierung:0,ist_hauptaufgabe:false,parent_id:null,completed_at:null,id:'',created_at:'',updated_at:''} as unknown as Aufgabe)
+                            setModal('aufgabe')
+                          }}>+ Task</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{fontSize:'var(--text-md)',fontWeight:700,marginBottom:'var(--sp3)',color:'var(--ink)'}}>Team</div>
+            <div className="card" style={{marginBottom:'var(--sp5)'}}>
+              {PERSONEN.map((p,pi)=>{
+                const pA=aufgaben.filter(a=>(a.personen||[a.person]).includes(p.name)&&a.status!=='Erledigt'&&!a.parent_id)
+                const pDone=aufgaben.filter(a=>a.person===p.name&&a.status==='Erledigt').length
+                const pTotal=aufgaben.filter(a=>a.person===p.name).length
+                const pPct=pTotal>0?Math.round(pDone/pTotal*100):0
+                const inArbeit=pA.filter(a=>a.status==='In Arbeit').length
+                return (
+                  <div key={p.name} style={{display:'flex',alignItems:'center',gap:'var(--sp3)',padding:'var(--sp3) var(--sp4)',borderBottom:pi<PERSONEN.length-1?'1px solid var(--border)':'none'}}>
+                    <div style={{width:32,height:32,borderRadius:'50%',background:PERSON_HEX[p.name],display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:'var(--text-sm)',fontWeight:700,flexShrink:0,boxShadow:`0 0 0 2px var(--bg), 0 0 10px ${PERSON_HEX[p.name]}44`}}>{p.name[0]}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:'flex',alignItems:'center',gap:'var(--sp2)',marginBottom:3}}>
+                        <span style={{fontWeight:700,color:PERSON_HEX[p.name],fontSize:'var(--text-sm)'}}>{p.name}</span>
+                        {wipWarn(p.name)==='rot'&&<span className="wip-warning">Überladen</span>}
+                        {wipWarn(p.name)==='gelb'&&<span className="wip-warning" style={{background:'var(--amber-bg)',color:'var(--amber)'}}>Voll</span>}
+                      </div>
+                      <div className="metric-bar" style={{height:2,borderRadius:2}}>
+                        <div className="metric-bar-fill" style={{width:`${pPct}%`,background:PERSON_HEX[p.name]}}/>
+                      </div>
+                    </div>
+                    <div style={{display:'flex',gap:'var(--sp3)',flexShrink:0,textAlign:'right'}}>
+                      <div>
+                        <div style={{fontFamily:'var(--font-mono)',fontSize:'var(--text-md)',fontWeight:700,color:pA.length>0?PERSON_HEX[p.name]:'var(--muted)',lineHeight:1}}>{pA.length}</div>
+                        <div style={{fontSize:'var(--text-2xs)',color:'var(--muted)',fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.06em'}}>offen</div>
+                      </div>
+                      {inArbeit>0&&<div>
+                        <div style={{fontFamily:'var(--font-mono)',fontSize:'var(--text-md)',fontWeight:700,color:'var(--amber)',lineHeight:1}}>{inArbeit}</div>
+                        <div style={{fontSize:'var(--text-2xs)',color:'var(--muted)',fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.06em'}}>aktiv</div>
+                      </div>}
+                      <div>
+                        <div style={{fontFamily:'var(--font-mono)',fontSize:'var(--text-md)',fontWeight:700,color:'var(--signal)',lineHeight:1}}>{pPct}%</div>
+                        <div style={{fontSize:'var(--text-2xs)',color:'var(--muted)',fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.06em'}}>done</div>
+                      </div>
+                    </div>
                   </div>
                 )
               })}
             </div>
-          </>
-        )}
 
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
-          <div style={{fontSize:'var(--text-md)',fontWeight:700,color:'var(--ink)'}}>Launch Readiness</div>
-          <div style={{display:'flex',alignItems:'center',gap:'var(--sp3)'}}>
-            <div style={{fontSize:'var(--text-sm)',color:readinessColor,fontWeight:700}}>{readinessDone}/{READINESS_ITEMS.length}</div>
-            <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>{readinessPct}%</div>
-          </div>
-        </div>
-        <div className="card" style={{marginBottom:'var(--sp5)'}}>
-          <div className="readiness-score-bar" style={{margin:'var(--sp3) var(--sp4) 0'}}>
-            <div className="readiness-score-fill" style={{width:`${readinessPct}%`,background:readinessColor}}/>
-          </div>
-          <div className="readiness-grid" style={{margin:'var(--sp3) var(--sp4) var(--sp4)'}}>
-            {READINESS_ITEMS.map(item=>(
-              <ReadinessItem key={item.id} item={item} checked={!!readiness[item.id]}
-                onToggle={()=>toggleReadiness(item.id)}
-                onLabelSave={(label)=>updateReadinessLabel(item.id,label)}/>
-            ))}
-          </div>
-        </div>
-
-        {offeneEntscheidungen.length>0&&(
-          <div style={{marginBottom:'var(--sp5)'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
-              <div style={{fontSize:'var(--text-md)',fontWeight:700,color:'var(--ink)'}}>Entscheidungen</div>
-              <button className="btn btn-xs btn-secondary" onClick={()=>setView('entscheidungen')}>Alle ansehen</button>
-            </div>
-            <div className="card">
-              {offeneEntscheidungen.map((e,idx)=>(
-                <div key={e.id} className="decision-queue-item">
-                  <div className="dq-index">{String(idx+1).padStart(2,'0')}</div>
-                  <div className="dq-body">
-                    <div className="dq-titel">{e.titel}</div>
-                    <div className="dq-meta">{e.projekt} · {fmtDate(e.datum)}{e.naechster_schritt&&<span style={{color:'var(--signal)'}}> · → {e.naechster_schritt}</span>}</div>
+            {activity.length>0&&(
+              <div className="card" style={{marginBottom:'var(--sp4)'}}>
+                <div className="section-label">Letzte Aktivität</div>
+                {activity.slice(0,6).map(a=>(
+                  <div key={a.id} className="activity-item">
+                    <div className="activity-dot" style={{background:PERSON_HEX[a.person]||'var(--muted)'}}/>
+                    <div className="activity-text">
+                      <span style={{fontWeight:600,color:PERSON_HEX[a.person]||'var(--slate)'}}>{a.person}</span>{' '}hat <em>{a.entity_titel}</em> {a.action}
+                    </div>
+                    <div className="activity-time">{fmtRelative(a.created_at)}</div>
                   </div>
-                  <div className="dq-actions">
-                    <button className="btn btn-xs btn-signal"
-                      onClick={()=>{
-                        setEditA({titel:`Folgeaufgabe: ${e.titel}`,beschreibung:`Aus Entscheidung vom ${fmtDate(e.datum)}: ${e.naechster_schritt||e.begruendung}`,person:aktiv,personen:[aktiv],projekt:e.projekt,prioritaet:'Hoch',status:'Offen',deadline:'',ergebnis:'',blocker:'',nummer:null,phase:'',sortierung:0,ist_hauptaufgabe:false,parent_id:null,completed_at:null,id:'',created_at:'',updated_at:''} as unknown as Aufgabe)
-                        setModal('aufgabe')
-                      }}>+ Aufgabe</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
-          <div style={{fontSize:'var(--text-md)',fontWeight:700,color:'var(--ink)'}}>Brand Readiness</div>
-          <div style={{display:'flex',alignItems:'center',gap:'var(--sp3)'}}>
-            <div style={{fontSize:'var(--text-sm)',color:brandColor,fontWeight:700}}>{brandDone}/{BRAND_ITEMS.length}</div>
-            <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>{brandPct}%</div>
-          </div>
-        </div>
-        <div className="card" style={{marginBottom:'var(--sp5)'}}>
-          <div className="readiness-score-bar" style={{margin:'var(--sp3) var(--sp4) 0'}}>
-            <div className="readiness-score-fill" style={{width:`${brandPct}%`,background:brandColor}}/>
-          </div>
-          <div className="readiness-grid" style={{margin:'var(--sp3) var(--sp4) var(--sp4)'}}>
-            {BRAND_ITEMS.map(item=>(
-              <ReadinessItem key={item.id} item={item} checked={!!brandReadiness[item.id]}
-                onToggle={()=>toggleBrandReadiness(item.id)}
-                onLabelSave={(label)=>updateBrandLabel(item.id,label)}/>
-            ))}
-          </div>
-        </div>
-
-        <RiskLog risiken={risiken} aktiv={aktiv} onAdd={addRisiko} onDel={delRisiko}/>
-
-        <div style={{fontSize:'var(--text-md)',fontWeight:700,marginBottom:'var(--sp3)',color:'var(--ink)'}}>Team</div>
-        <div className="card" style={{marginBottom:'var(--sp5)'}}>
-          {PERSONEN.map((p,pi)=>{
-            const pA=aufgaben.filter(a=>(a.personen||[a.person]).includes(p.name)&&a.status!=='Erledigt'&&!a.parent_id)
-            const pDone=aufgaben.filter(a=>a.person===p.name&&a.status==='Erledigt').length
-            const pTotal=aufgaben.filter(a=>a.person===p.name).length
-            const pPct=pTotal>0?Math.round(pDone/pTotal*100):0
-            const inArbeit=pA.filter(a=>a.status==='In Arbeit').length
-            return (
-              <div key={p.name} style={{display:'flex',alignItems:'center',gap:'var(--sp4)',padding:'var(--sp3) var(--sp5)',borderBottom:pi<PERSONEN.length-1?'1px solid var(--border)':'none'}}>
-                <div style={{width:32,height:32,borderRadius:'50%',background:PERSON_HEX[p.name],display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:'var(--text-sm)',fontWeight:700,flexShrink:0}}>{p.name[0]}</div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:'flex',alignItems:'center',gap:'var(--sp2)',marginBottom:4}}>
-                    <span style={{fontWeight:700,color:PERSON_HEX[p.name],fontSize:'var(--text-base)'}}>{p.name}</span>
-                    <span style={{fontSize:'var(--text-xs)',color:'var(--muted)',fontFamily:'var(--font-mono)'}}>{p.role}</span>
-                    {wipWarn(p.name)==='rot'&&<span className="wip-warning">Überladen</span>}
-                    {wipWarn(p.name)==='gelb'&&<span className="wip-warning" style={{background:'var(--amber-bg)',color:'var(--amber)'}}>Voll</span>}
-                  </div>
-                  <div className="metric-bar" style={{height:3,borderRadius:2}}>
-                    <div className="metric-bar-fill" style={{width:`${pPct}%`,background:PERSON_HEX[p.name]}}/>
-                  </div>
-                </div>
-                <div style={{display:'flex',gap:'var(--sp4)',flexShrink:0,textAlign:'center'}}>
-                  <div>
-                    <div style={{fontFamily:'var(--font-mono)',fontSize:'var(--text-lg)',fontWeight:700,color:pA.length>0?PERSON_HEX[p.name]:'var(--muted)',lineHeight:1}}>{pA.length}</div>
-                    <div style={{fontSize:10,color:'var(--muted)',fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Offen</div>
-                  </div>
-                  {inArbeit>0&&<div>
-                    <div style={{fontFamily:'var(--font-mono)',fontSize:'var(--text-lg)',fontWeight:700,color:'var(--amber)',lineHeight:1}}>{inArbeit}</div>
-                    <div style={{fontSize:10,color:'var(--muted)',fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Aktiv</div>
-                  </div>}
-                  <div>
-                    <div style={{fontFamily:'var(--font-mono)',fontSize:'var(--text-lg)',fontWeight:700,color:'var(--signal)',lineHeight:1}}>{pPct}%</div>
-                    <div style={{fontSize:10,color:'var(--muted)',fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Done</div>
-                  </div>
-                </div>
+                ))}
               </div>
-            )
-          })}
-        </div>
+            )}
 
-        {activity.length>0&&(
-          <div className="card">
-            <div className="section-label">Letzte Aktivität</div>
-            {activity.slice(0,8).map(a=>(
-              <div key={a.id} className="activity-item">
-                <div className="activity-dot" style={{background:PERSON_HEX[a.person]||'var(--muted)'}}/>
-                <div className="activity-text">
-                  <span style={{fontWeight:600,color:PERSON_HEX[a.person]||'var(--slate)'}}>{a.person}</span>{' '}hat <em>{a.entity_titel}</em> {a.action}
-                </div>
-                <div className="activity-time">{new Date(a.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})} {new Date(a.created_at).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}</div>
-              </div>
-            ))}
+            <WochenberichtBlock/>
           </div>
-        )}
-
-        <WochenberichtBlock/>
+        </div>
       </div>
     )
   }
@@ -2029,6 +2034,14 @@ export default function App() {
         <div className="metric-bar" style={{height:6,borderRadius:'var(--r-sm)',marginBottom:'var(--sp6)'}}>
           <div className="metric-bar-fill" style={{width:`${gesamtPct}%`,background:'var(--signal)',height:6,borderRadius:'var(--r-sm)'}}/>
         </div>
+        {!loading&&phasen.length===0&&(
+          <div className="card"><div className="empty" style={{padding:'var(--sp10) var(--sp4)'}}>
+            <div className="empty-icon" style={{fontSize:48,marginBottom:'var(--sp4)'}}>📋</div>
+            <div className="empty-title">Noch kein Plan angelegt</div>
+            <div className="empty-sub" style={{marginBottom:'var(--sp5)'}}>Füge die erste Hauptaufgabe hinzu, um den Launch Plan zu starten</div>
+            <button className="btn btn-primary" onClick={()=>setShowAddPhase(true)}>+ Hauptaufgabe hinzufügen</button>
+          </div></div>
+        )}
         {loading?<>{Array.from({length:3}).map((_,i)=><div key={i} className="card" style={{padding:'var(--sp4)',marginBottom:'var(--sp4)'}}><SkeletonList rows={3}/></div>)}</>
           :phasen.map(phase=>{
             const items=hauptaufgaben.filter(a=>a.phase===phase).sort((a,b)=>a.sortierung-b.sortierung)
@@ -2162,7 +2175,7 @@ export default function App() {
         </div>
         <div className="filter-row" style={{marginBottom:'var(--sp5)'}}>{['Alle',...PROJEKTE].map(p=><button key={p} className={`chip${fP===p?' on':''}`} onClick={()=>setFP(p)}>{p}</button>)}</div>
         <div className="card">
-          {loading?<SkeletonList rows={4}/>:gef.length===0?<div className="empty"><div className="empty-icon">{Ico.files}</div><div className="empty-title">Noch keine Dateien</div><div className="empty-sub">Tech Packs, Angebote, Bilder hochladen</div></div>
+          {loading?<SkeletonList rows={4}/>:gef.length===0?<div className="empty"><div className="empty-icon">{Ico.files}</div><div className="empty-title">Noch keine Dateien</div><div className="empty-sub" style={{marginBottom:'var(--sp4)'}}>Tech Packs, Angebote, Bilder hochladen</div><button className="btn btn-primary btn-sm" onClick={()=>setModal('datei')}>+ Datei hochladen</button></div>
             :gef.map(d=>(
               <div className="file-row" key={d.id}>
                 <div className="file-icon">{d.dateiname.match(/\.(jpe?g|png|gif|webp)$/i)?Ico.img:Ico.file}</div>
@@ -2291,11 +2304,15 @@ export default function App() {
 
       <nav className="mobile-nav">
         <div className="mobile-nav-inner">
-          {navItems.slice(0,5).map(n=>(
+          {navItems.slice(0,4).map(n=>(
             <button key={n.id} className={`mobile-nav-btn${view===n.id?' active':''}`} onClick={()=>setView(n.id)}>
               {n.icon}<span className="mobile-nav-label">{n.label.split(' ')[0]}</span>
             </button>
           ))}
+          <button className="mobile-nav-btn" onClick={()=>setCmdOpen(true)}>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="9" cy="9" r="5.5" stroke="currentColor" strokeWidth="1.5"/><path d="M13.5 13.5L17 17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+            <span className="mobile-nav-label">Suche</span>
+          </button>
           <button className="mobile-nav-btn" style={{position:'relative'}} onClick={()=>setSidebarOpen(o=>!o)}>
             {Ico.menu}
             {notifications.filter(n=>!n.gelesen).length>0&&<div style={{position:'absolute',top:4,right:8,width:8,height:8,borderRadius:'50%',background:'var(--red)',border:'1.5px solid var(--bg)'}}/>}
