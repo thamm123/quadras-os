@@ -996,6 +996,8 @@ export default function App() {
                   <CommentRow key={c.id} c={c} aktiv={aktiv} onDelete={async(id)=>{
                     setComments(prev=>prev.filter(x=>x.id!==id))
                     await supabase.from('aufgabe_comments').delete().eq('id',id)
+                    const {data:deleted}=await supabase.from('notifications').delete().eq('entity_id',a.id).eq('entity_typ','aufgabe').in('typ',['kommentar','mention']).select('id')
+                    if(deleted?.length) setNotifications(prev=>prev.filter(n=>!deleted.some((d:{id:string})=>d.id===n.id)))
                   }}/>
                 ))
               }
