@@ -302,6 +302,64 @@ function NotificationCenter({mounted,notifications,notifOpen,setNotifOpen,setSho
   )
 }
 
+// ── CommentRow (modul-level — verhindert useState-in-map Crash) ──────────
+type CommentRowProps = {c:Comment; aktiv:string; onDelete:(id:string)=>void}
+function CommentRow({c,aktiv,onDelete}:CommentRowProps) {
+  const [confirmDel,setConfirmDel]=useState(false)
+  const isAuthor=c.person===aktiv
+  return (
+    <div className="comment" style={{borderLeftColor:PERSON_HEX[c.person]||'var(--border2)'}}>
+      <div className="comment-header">
+        <div style={{width:20,height:20,borderRadius:'50%',background:PERSON_HEX[c.person]||'var(--mid)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:9,fontWeight:800,flexShrink:0}}>{c.person[0]}</div>
+        <span className="comment-person" style={{color:PERSON_HEX[c.person]||'var(--slate)'}}>{c.person}</span>
+        <span className="comment-time">{new Date(c.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
+        {isAuthor&&(
+          confirmDel
+            ?<div style={{display:'flex',gap:4,marginLeft:'auto'}}>
+                <button className="btn btn-xs btn-danger" onClick={()=>onDelete(c.id)}>Löschen</button>
+                <button className="btn btn-xs btn-secondary" onClick={()=>setConfirmDel(false)}>Abbruch</button>
+              </div>
+            :<button className="icon-btn del" style={{width:22,height:22,marginLeft:'auto',opacity:0}} title="Kommentar löschen"
+                onClick={()=>setConfirmDel(true)}>{Ico.trash}</button>
+        )}
+      </div>
+      {c.kommentar&&<div className="comment-text">
+        {c.kommentar.split(/(@(?:Alexander|Norman|Anna))/g).map((part,i)=>
+          /^@(Alexander|Norman|Anna)$/.test(part)
+            ?<span key={i} style={{color:PERSON_HEX[part.slice(1)]||'var(--signal)',fontWeight:700}}>{part}</span>
+            :<span key={i}>{part}</span>
+        )}
+      </div>}
+      {c.anhang_url&&c.anhang_url.startsWith('https://')&&(
+        <div style={{marginTop:'var(--sp2)'}}>
+          {c.anhang_typ==='bild'
+            ?<img src={c.anhang_url} alt={c.anhang_name||'Bild'}
+                style={{maxWidth:'100%',borderRadius:'var(--r-md)',maxHeight:240,objectFit:'cover',cursor:'pointer',display:'block',marginTop:2}}
+                onClick={()=>window.open(c.anhang_url,'_blank')}
+                onError={e=>{
+                  const img=e.target as HTMLImageElement
+                  const wrapper=img.parentElement
+                  if(wrapper){
+                    img.style.display='none'
+                    const link=document.createElement('a')
+                    link.href=c.anhang_url; link.target='_blank'; link.rel='noopener noreferrer'
+                    link.textContent=c.anhang_name||'Bild öffnen'
+                    link.style.cssText='font-size:12px;color:var(--signal);text-decoration:underline'
+                    wrapper.appendChild(link)
+                  }
+                }}
+              />
+            :<a href={c.anhang_url} target="_blank" rel="noopener noreferrer"
+                style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:'var(--text-xs)',color:'var(--signal)',fontWeight:600,textDecoration:'none',padding:'3px 8px',background:'var(--signal-bg)',borderRadius:'var(--r-sm)'}}>
+                {Ico.file} {c.anhang_name}
+              </a>
+          }
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Module-level constants ────────────────────────────────────────────────
 const DEFAULT_READINESS=[
   {id:'produkt',    label:'Produkt freigegeben'},
@@ -327,6 +385,81 @@ const DEFAULT_BRAND=[
   {id:'founder_story',    label:'Founder Edition Story ist klar'},
   {id:'no_cheap_vibes',   label:'Kein Dropshipping-Feeling irgendwo'},
 ]
+
+// ── ReadinessItem (modul-level) ───────────────────────────────────────────
+function ReadinessItem({item,checked,onToggle,onLabelSave}:{item:{id:string;label:string};checked:boolean;onToggle:()=>void;onLabelSave:(l:string)=>void}) {
+  const [editing,setEditing]=useState(false)
+  const [draft,setDraft]=useState(item.label)
+  const save=()=>{ onLabelSave(draft); setEditing(false) }
+  return (
+    <div className={`readiness-item${checked?' done':''}`}>
+      <button className={`readiness-check${checked?' done':''}`} onClick={onToggle}>
+        {checked&&<svg style={{width:9,height:9}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+      </button>
+      {editing ? (
+        <div style={{flex:1,display:'flex',gap:'var(--sp1)',alignItems:'center'}} onClick={e=>e.stopPropagation()}>
+          <input autoFocus className="form-input" style={{fontSize:'var(--text-sm)',padding:'2px var(--sp2)',flex:1}}
+            value={draft} onChange={e=>setDraft(e.target.value)}
+            onKeyDown={e=>{if(e.key==='Enter')save();if(e.key==='Escape')setEditing(false)}}/>
+          <button className="btn btn-xs btn-signal" onClick={save}>✓</button>
+          <button className="btn btn-xs btn-secondary" onClick={()=>setEditing(false)}>✕</button>
+        </div>
+      ) : (
+        <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'space-between',gap:'var(--sp1)'}}>
+          <span className="readiness-label" onClick={onToggle}>{item.label}</span>
+          <button className="icon-btn" style={{width:20,height:20,flexShrink:0}}
+            onClick={e=>{e.stopPropagation();setDraft(item.label);setEditing(true)}}>{Ico.edit}</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── RiskLog (modul-level) ─────────────────────────────────────────────────
+function RiskLog({risiken,aktiv,onAdd,onDel}:{risiken:Risiko[];aktiv:string;onAdd:(t:string,i:string,o:string,g:string)=>void;onDel:(id:string)=>void}) {
+  const [show,setShow]=useState(false)
+  const [f,setF]=useState({titel:'',impact:'Hoch',owner:aktiv,gegenmasnahme:''})
+  const impactColor=(i:string)=>i==='Hoch'?'var(--red)':i==='Mittel'?'var(--amber)':'var(--signal)'
+  const statusColor=(s:string)=>s==='Eingetreten'?'var(--red)':s==='Offen'?'var(--amber)':'var(--muted)'
+  return (
+    <div style={{marginBottom:'var(--sp5)'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
+        <div className="section-title">Risiken</div>
+        <button className="btn btn-xs btn-secondary" onClick={()=>setShow(s=>!s)}>{show?'Abbrechen':'+ Risiko'}</button>
+      </div>
+      {show&&(
+        <div className="card" style={{marginBottom:'var(--sp3)',padding:'var(--sp4)'}}>
+          <div className="form-group"><label className="form-label">Risiko *</label><input className="form-input" style={{fontSize:'var(--text-sm)'}} placeholder="z.B. Packaging Lieferzeit zu lang" value={f.titel} onChange={e=>setF(p=>({...p,titel:e.target.value}))}/></div>
+          <div className="form-row">
+            <div className="form-group"><label className="form-label">Impact</label><select className="form-input" style={{fontSize:'var(--text-sm)'}} value={f.impact} onChange={e=>setF(p=>({...p,impact:e.target.value}))}><option>Hoch</option><option>Mittel</option><option>Niedrig</option></select></div>
+            <div className="form-group"><label className="form-label">Owner</label><select className="form-input" style={{fontSize:'var(--text-sm)'}} value={f.owner} onChange={e=>setF(p=>({...p,owner:e.target.value}))}>{PERSONEN.map(p=><option key={p.name}>{p.name}</option>)}</select></div>
+          </div>
+          <div className="form-group"><label className="form-label">Gegenmaßnahme</label><input className="form-input" style={{fontSize:'var(--text-sm)'}} placeholder="Was tun wenn es eintritt?" value={f.gegenmasnahme} onChange={e=>setF(p=>({...p,gegenmasnahme:e.target.value}))}/></div>
+          <div style={{display:'flex',gap:'var(--sp2)'}}>
+            <button className="btn btn-primary btn-sm" onClick={()=>{if(!f.titel.trim())return;onAdd(f.titel,f.impact,f.owner,f.gegenmasnahme);setF({titel:'',impact:'Hoch',owner:aktiv,gegenmasnahme:''});setShow(false)}}>Speichern</button>
+            <button className="btn btn-secondary btn-sm" onClick={()=>setShow(false)}>Abbrechen</button>
+          </div>
+        </div>
+      )}
+      {risiken.length===0&&!show&&<div className="card"><div className="empty"><div className="empty-title">Keine Risiken erfasst</div><div className="empty-sub">Füge bekannte Risiken hinzu bevor sie eintreten</div></div></div>}
+      {risiken.length>0&&(
+        <div className="card">
+          {risiken.map(r=>(
+            <div key={r.id} style={{display:'flex',alignItems:'flex-start',gap:'var(--sp3)',padding:'var(--sp3) var(--sp4)',borderBottom:'1px solid var(--border)'}}>
+              <div style={{width:8,height:8,borderRadius:'50%',background:impactColor(r.impact),flexShrink:0,marginTop:5}}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:'var(--text-base)',fontWeight:500,color:'var(--ink)',marginBottom:2}}>{r.titel}</div>
+                {r.gegenmasnahme&&<div style={{fontSize:'var(--text-xs)',color:'var(--mid)',marginBottom:2}}>→ {r.gegenmasnahme}</div>}
+                <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>{r.owner} · Impact: <span style={{color:impactColor(r.impact),fontWeight:600}}>{r.impact}</span> · <span style={{color:statusColor(r.status)}}>{r.status}</span></div>
+              </div>
+              <button className="icon-btn del" onClick={()=>onDel(r.id)} style={{flexShrink:0}}>{Ico.trash}</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function App() {
   const [authed,      setAuthed]      = useState(false)
@@ -857,66 +990,12 @@ export default function App() {
             <div className="flyout-section">
               <div className="flyout-section-label">Kommentare <span style={{color:'var(--muted)',fontWeight:400}}>{comments.length}</span></div>
               {loadingCom?<div className="skeleton skeleton-line"/>:comments.length===0?<div style={{fontSize:'var(--text-sm)',color:'var(--muted)',padding:'var(--sp1) 0'}}>Noch keine Kommentare</div>:
-                comments.map(c=>{
-                  const isAuthor=c.person===aktiv
-                  const [confirmDel,setConfirmDel]=useState(false)
-                  const delComment=async()=>{
-                    setComments(prev=>prev.filter(x=>x.id!==c.id))
-                    await supabase.from('aufgabe_comments').delete().eq('id',c.id)
-                  }
-                  return (
-                  <div key={c.id} className="comment" style={{borderLeftColor:PERSON_HEX[c.person]||'var(--border2)'}}>
-                    <div className="comment-header">
-                      <div style={{width:20,height:20,borderRadius:'50%',background:PERSON_HEX[c.person]||'var(--mid)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:9,fontWeight:800,flexShrink:0}}>{c.person[0]}</div>
-                      <span className="comment-person" style={{color:PERSON_HEX[c.person]||'var(--slate)'}}>{c.person}</span>
-                      <span className="comment-time">{new Date(c.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
-                      {isAuthor&&(
-                        confirmDel
-                          ?<div style={{display:'flex',gap:4,marginLeft:'auto'}}>
-                              <button className="btn btn-xs btn-danger" onClick={delComment}>Löschen</button>
-                              <button className="btn btn-xs btn-secondary" onClick={()=>setConfirmDel(false)}>Abbruch</button>
-                            </div>
-                          :<button className="icon-btn del" style={{width:22,height:22,marginLeft:'auto',opacity:0}} title="Kommentar löschen"
-                              onClick={()=>setConfirmDel(true)}>{Ico.trash}</button>
-                      )}
-                    </div>
-                    {c.kommentar&&<div className="comment-text">
-                      {c.kommentar.split(/(@(?:Alexander|Norman|Anna))/g).map((part,i)=>
-                        /^@(Alexander|Norman|Anna)$/.test(part)
-                          ?<span key={i} style={{color:PERSON_HEX[part.slice(1)]||'var(--signal)',fontWeight:700}}>{part}</span>
-                          :<span key={i}>{part}</span>
-                      )}
-                    </div>}
-                    {c.anhang_url&&c.anhang_url.startsWith('https://')&&(
-                      <div style={{marginTop:'var(--sp2)'}}>
-                        {c.anhang_typ==='bild'
-                          ?<img
-                              src={c.anhang_url}
-                              alt={c.anhang_name||'Bild'}
-                              style={{maxWidth:'100%',borderRadius:'var(--r-md)',maxHeight:240,objectFit:'cover',cursor:'pointer',display:'block',marginTop:2}}
-                              onClick={()=>window.open(c.anhang_url,'_blank')}
-                              onError={e=>{
-                                const img=e.target as HTMLImageElement
-                                const wrapper=img.parentElement
-                                if(wrapper){
-                                  img.style.display='none'
-                                  const link=document.createElement('a')
-                                  link.href=c.anhang_url; link.target='_blank'; link.rel='noopener noreferrer'
-                                  link.textContent=c.anhang_name||'Bild öffnen'
-                                  link.style.cssText='font-size:12px;color:var(--signal);text-decoration:underline'
-                                  wrapper.appendChild(link)
-                                }
-                              }}
-                            />
-                          :<a href={c.anhang_url} target="_blank" rel="noopener noreferrer"
-                              style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:'var(--text-xs)',color:'var(--signal)',fontWeight:600,textDecoration:'none',padding:'3px 8px',background:'var(--signal-bg)',borderRadius:'var(--r-sm)'}}>
-                              {Ico.file} {c.anhang_name}
-                            </a>
-                        }
-                      </div>
-                    )}
-                  </div>
-                )})
+                comments.map(c=>(
+                  <CommentRow key={c.id} c={c} aktiv={aktiv} onDelete={async(id)=>{
+                    setComments(prev=>prev.filter(x=>x.id!==id))
+                    await supabase.from('aufgabe_comments').delete().eq('id',id)
+                  }}/>
+                ))
               }
               {/* Comment input */}
               <div style={{marginBottom:'var(--sp2)'}}>
@@ -1459,81 +1538,6 @@ export default function App() {
             </div>
           </div>
         </div>
-      </div>
-    )
-  }
-
-  // ── ReadinessItem ─────────────────────────────────────────────────────────
-  function ReadinessItem({item,checked,onToggle,onLabelSave}:{item:{id:string;label:string};checked:boolean;onToggle:()=>void;onLabelSave:(l:string)=>void}) {
-    const [editing,setEditing]=useState(false)
-    const [draft,setDraft]=useState(item.label)
-    const save=()=>{ onLabelSave(draft); setEditing(false) }
-    return (
-      <div className={`readiness-item${checked?' done':''}`}>
-        <button className={`readiness-check${checked?' done':''}`} onClick={onToggle}>
-          {checked&&<svg style={{width:9,height:9}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
-        </button>
-        {editing ? (
-          <div style={{flex:1,display:'flex',gap:'var(--sp1)',alignItems:'center'}} onClick={e=>e.stopPropagation()}>
-            <input autoFocus className="form-input" style={{fontSize:'var(--text-sm)',padding:'2px var(--sp2)',flex:1}}
-              value={draft} onChange={e=>setDraft(e.target.value)}
-              onKeyDown={e=>{if(e.key==='Enter')save();if(e.key==='Escape')setEditing(false)}}/>
-            <button className="btn btn-xs btn-signal" onClick={save}>✓</button>
-            <button className="btn btn-xs btn-secondary" onClick={()=>setEditing(false)}>✕</button>
-          </div>
-        ) : (
-          <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'space-between',gap:'var(--sp1)'}}>
-            <span className="readiness-label" onClick={onToggle}>{item.label}</span>
-            <button className="icon-btn" style={{width:20,height:20,flexShrink:0}}
-              onClick={e=>{e.stopPropagation();setDraft(item.label);setEditing(true)}}>{Ico.edit}</button>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // ── Risk Log ──────────────────────────────────────────────────────────────
-  function RiskLog({risiken,aktiv,onAdd,onDel}:{risiken:Risiko[];aktiv:string;onAdd:(t:string,i:string,o:string,g:string)=>void;onDel:(id:string)=>void}) {
-    const [show,setShow]=useState(false)
-    const [f,setF]=useState({titel:'',impact:'Hoch',owner:aktiv,gegenmasnahme:''})
-    const impactColor=(i:string)=>i==='Hoch'?'var(--red)':i==='Mittel'?'var(--amber)':'var(--signal)'
-    const statusColor=(s:string)=>s==='Eingetreten'?'var(--red)':s==='Offen'?'var(--amber)':'var(--muted)'
-    return (
-      <div style={{marginBottom:'var(--sp5)'}}>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
-          <div className="section-title">Risiken</div>
-          <button className="btn btn-xs btn-secondary" onClick={()=>setShow(s=>!s)}>{show?'Abbrechen':'+ Risiko'}</button>
-        </div>
-        {show&&(
-          <div className="card" style={{marginBottom:'var(--sp3)',padding:'var(--sp4)'}}>
-            <div className="form-group"><label className="form-label">Risiko *</label><input className="form-input" style={{fontSize:'var(--text-sm)'}} placeholder="z.B. Packaging Lieferzeit zu lang" value={f.titel} onChange={e=>setF(p=>({...p,titel:e.target.value}))}/></div>
-            <div className="form-row">
-              <div className="form-group"><label className="form-label">Impact</label><select className="form-input" style={{fontSize:'var(--text-sm)'}} value={f.impact} onChange={e=>setF(p=>({...p,impact:e.target.value}))}><option>Hoch</option><option>Mittel</option><option>Niedrig</option></select></div>
-              <div className="form-group"><label className="form-label">Owner</label><select className="form-input" style={{fontSize:'var(--text-sm)'}} value={f.owner} onChange={e=>setF(p=>({...p,owner:e.target.value}))}>{PERSONEN.map(p=><option key={p.name}>{p.name}</option>)}</select></div>
-            </div>
-            <div className="form-group"><label className="form-label">Gegenmaßnahme</label><input className="form-input" style={{fontSize:'var(--text-sm)'}} placeholder="Was tun wenn es eintritt?" value={f.gegenmasnahme} onChange={e=>setF(p=>({...p,gegenmasnahme:e.target.value}))}/></div>
-            <div style={{display:'flex',gap:'var(--sp2)'}}>
-              <button className="btn btn-primary btn-sm" onClick={()=>{if(!f.titel.trim())return;onAdd(f.titel,f.impact,f.owner,f.gegenmasnahme);setF({titel:'',impact:'Hoch',owner:aktiv,gegenmasnahme:''});setShow(false)}}>Speichern</button>
-              <button className="btn btn-secondary btn-sm" onClick={()=>setShow(false)}>Abbrechen</button>
-            </div>
-          </div>
-        )}
-        {risiken.length===0&&!show&&<div className="card"><div className="empty"><div className="empty-title">Keine Risiken erfasst</div><div className="empty-sub">Füge bekannte Risiken hinzu bevor sie eintreten</div></div></div>}
-        {risiken.length>0&&(
-          <div className="card">
-            {risiken.map(r=>(
-              <div key={r.id} style={{display:'flex',alignItems:'flex-start',gap:'var(--sp3)',padding:'var(--sp3) var(--sp4)',borderBottom:'1px solid var(--border)'}}>
-                <div style={{width:8,height:8,borderRadius:'50%',background:impactColor(r.impact),flexShrink:0,marginTop:5}}/>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:'var(--text-base)',fontWeight:500,color:'var(--ink)',marginBottom:2}}>{r.titel}</div>
-                  {r.gegenmasnahme&&<div style={{fontSize:'var(--text-xs)',color:'var(--mid)',marginBottom:2}}>→ {r.gegenmasnahme}</div>}
-                  <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>{r.owner} · Impact: <span style={{color:impactColor(r.impact),fontWeight:600}}>{r.impact}</span> · <span style={{color:statusColor(r.status)}}>{r.status}</span></div>
-                </div>
-                <button className="icon-btn del" onClick={()=>onDel(r.id)} style={{flexShrink:0}}>{Ico.trash}</button>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     )
   }
