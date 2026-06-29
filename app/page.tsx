@@ -1150,7 +1150,7 @@ export default function App() {
         }}>
         <div style={{flexShrink:0,cursor:'pointer'}} onClick={onOpen}>
           {isKommentar
-            ?<div className="notif-avatar" style={{background:authorColor}}>{n.von[0]}</div>
+            ?<div className="notif-avatar" style={{background:authorColor}}>{(n.von||'?')[0]}</div>
             :<NotifTypIcon typ={n.typ}/>
           }
         </div>
@@ -1160,7 +1160,7 @@ export default function App() {
           </div>
           {isKommentar&&<div style={{fontSize:'var(--text-xs)',fontWeight:600,color:authorColor,marginBottom:2,fontFamily:'var(--font-mono)'}}>{n.von}</div>}
           <div style={{fontSize:'var(--text-xs)',color:dark?(n.gelesen?'rgba(255,255,255,0.35)':'rgba(255,255,255,0.6)'):(n.gelesen?'var(--muted)':'var(--mid)'),lineHeight:1.4,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>
-            {isKommentar?n.nachricht.replace(/^[^:]+:\s*/,''):n.nachricht}
+            {isKommentar?(n.nachricht||'').replace(/^[^:]+:\s*/,''):(n.nachricht||'')}
           </div>
           <div style={{fontSize:10,color:dark?'rgba(255,255,255,0.28)':'var(--muted)',marginTop:3,fontFamily:'var(--font-mono)'}}>{fmtRelative(n.created_at)}</div>
         </div>
