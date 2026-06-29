@@ -1607,11 +1607,11 @@ export default function App() {
           <div style={{padding:'var(--sp4)'}}>
             <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
               <div>
-                <div style={{fontSize:'var(--text-xs)',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:'var(--sp1)'}}>QUADRAS · Launch Status</div>
+                <div style={{fontSize:'var(--text-xs)',fontWeight:600,color:'var(--muted)',marginBottom:'var(--sp1)'}}>Projektstatus</div>
                 <div style={{fontSize:'var(--text-lg)',fontWeight:700,color:statusColor}}>{statusText}</div>
               </div>
               <div style={{textAlign:'right'}}>
-                <div style={{fontFamily:'var(--font-display)',fontSize:'var(--text-4xl)',fontWeight:700,color:statusColor,letterSpacing:'-1px',lineHeight:1}}>{gesamtPct}%</div>
+                <div style={{fontFamily:'var(--font-display)',fontSize:52,fontWeight:700,color:statusColor,letterSpacing:'-2px',lineHeight:1}}>{gesamtPct}%</div>
                 <div style={{fontSize:'var(--text-xs)',color:'var(--muted)',marginTop:2}}>aus Hauptaufgaben</div>
               </div>
             </div>
@@ -1642,16 +1642,16 @@ export default function App() {
           <div className="cockpit-name">{aktiv}</div>
           <div className="cockpit-meta">{new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · KW {(()=>{const d=new Date();const dayNum=d.getDay()||7;d.setDate(d.getDate()+4-dayNum);const yearStart=new Date(d.getFullYear(),0,1);return Math.ceil((((d.getTime()-yearStart.getTime())/86400000)+1)/7)})()}</div>
           {(()=>{const todayTasks=aufgaben.filter(a=>(a.personen||[a.person]).includes(aktiv)&&a.deadline===t&&a.status!=='Erledigt');return todayTasks.length>0&&(
-            <div style={{marginTop:'var(--sp4)',paddingTop:'var(--sp4)',borderTop:'1px solid rgba(255,255,255,0.08)'}}>
-              <div style={{fontFamily:'var(--font-mono)',fontSize:10,color:'rgba(255,255,255,0.3)',textTransform:'uppercase',letterSpacing:'0.12em',marginBottom:'var(--sp2)'}}>Heute fällig — {todayTasks.length} Aufgabe{todayTasks.length>1?'n':''}</div>
+            <div style={{marginTop:'var(--sp4)',paddingTop:'var(--sp4)',borderTop:'0.5px solid rgba(10,12,15,0.08)'}}>
+              <div style={{fontSize:11,fontWeight:600,color:'var(--muted)',marginBottom:'var(--sp2)'}}>Heute fällig · {todayTasks.length} Aufgabe{todayTasks.length>1?'n':''}</div>
               <div style={{display:'flex',flexDirection:'column',gap:5}}>
                 {todayTasks.slice(0,3).map(a=>(
                   <div key={a.id} style={{display:'flex',alignItems:'center',gap:'var(--sp2)',cursor:'pointer'}} onClick={()=>setFlyout(a)}>
                     <div style={{width:5,height:5,borderRadius:'50%',background:a.prioritaet==='Hoch'?'var(--red)':'var(--signal)',flexShrink:0}}/>
-                    <span style={{fontSize:'var(--text-sm)',color:'rgba(255,255,255,0.7)',flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{a.titel}</span>
+                    <span style={{fontSize:'var(--text-sm)',color:'var(--slate)',flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{a.titel}</span>
                   </div>
                 ))}
-                {todayTasks.length>3&&<div style={{fontSize:'var(--text-xs)',color:'rgba(255,255,255,0.3)',fontFamily:'var(--font-mono)'}}>+ {todayTasks.length-3} weitere</div>}
+                {todayTasks.length>3&&<div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>+ {todayTasks.length-3} weitere</div>}
               </div>
             </div>
           )})()}
@@ -1856,7 +1856,7 @@ export default function App() {
                 const inArbeit=pA.filter(a=>a.status==='In Arbeit').length
                 return (
                   <div key={p.name} style={{display:'flex',alignItems:'center',gap:'var(--sp3)',padding:'var(--sp3) var(--sp4)',borderBottom:pi<PERSONEN.length-1?'1px solid var(--border)':'none'}}>
-                    <div style={{width:32,height:32,borderRadius:'50%',background:PERSON_HEX[p.name],display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:'var(--text-sm)',fontWeight:700,flexShrink:0,boxShadow:`0 0 0 2px var(--bg), 0 0 10px ${PERSON_HEX[p.name]}44`}}>{p.name[0]}</div>
+                    <div style={{width:32,height:32,borderRadius:'50%',background:PERSON_HEX[p.name],display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:'var(--text-sm)',fontWeight:700,flexShrink:0}}>{p.name[0]}</div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:'flex',alignItems:'center',gap:'var(--sp2)',marginBottom:3}}>
                         <span style={{fontWeight:700,color:PERSON_HEX[p.name],fontSize:'var(--text-sm)'}}>{p.name}</span>
@@ -1869,16 +1869,16 @@ export default function App() {
                     </div>
                     <div style={{display:'flex',gap:'var(--sp3)',flexShrink:0,textAlign:'right'}}>
                       <div>
-                        <div style={{fontFamily:'var(--font-mono)',fontSize:'var(--text-md)',fontWeight:700,color:pA.length>0?PERSON_HEX[p.name]:'var(--muted)',lineHeight:1}}>{pA.length}</div>
-                        <div style={{fontSize:'var(--text-2xs)',color:'var(--muted)',fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.06em'}}>offen</div>
+                        <div style={{fontWeight:700,fontSize:'var(--text-md)',color:pA.length>0?PERSON_HEX[p.name]:'var(--muted)',lineHeight:1}}>{pA.length}</div>
+                        <div style={{fontSize:'var(--text-2xs)',color:'var(--muted)',fontWeight:500,marginTop:2}}>offen</div>
                       </div>
                       {inArbeit>0&&<div>
-                        <div style={{fontFamily:'var(--font-mono)',fontSize:'var(--text-md)',fontWeight:700,color:'var(--amber)',lineHeight:1}}>{inArbeit}</div>
-                        <div style={{fontSize:'var(--text-2xs)',color:'var(--muted)',fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.06em'}}>aktiv</div>
+                        <div style={{fontWeight:700,fontSize:'var(--text-md)',color:'var(--amber)',lineHeight:1}}>{inArbeit}</div>
+                        <div style={{fontSize:'var(--text-2xs)',color:'var(--muted)',fontWeight:500,marginTop:2}}>aktiv</div>
                       </div>}
                       <div>
-                        <div style={{fontFamily:'var(--font-mono)',fontSize:'var(--text-md)',fontWeight:700,color:'var(--signal)',lineHeight:1}}>{pPct}%</div>
-                        <div style={{fontSize:'var(--text-2xs)',color:'var(--muted)',fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.06em'}}>done</div>
+                        <div style={{fontWeight:700,fontSize:'var(--text-md)',color:'var(--signal)',lineHeight:1}}>{pPct}%</div>
+                        <div style={{fontSize:'var(--text-2xs)',color:'var(--muted)',fontWeight:500,marginTop:2}}>done</div>
                       </div>
                     </div>
                   </div>
@@ -1931,13 +1931,13 @@ export default function App() {
         <div style={{padding:'var(--sp4) var(--sp5)'}}>
           <div style={{display:'flex',alignItems:'center',gap:'var(--sp4)',marginBottom:'var(--sp3)'}}>
             <div style={{textAlign:'center'}}>
-              <div style={{fontFamily:'var(--font-mono)',fontSize:'var(--text-3xl)',fontWeight:700,color:'var(--signal)',letterSpacing:'-1px'}}>{doneThisWeek.length}</div>
-              <div style={{fontSize:'var(--text-xs)',color:'var(--muted)',fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.08em'}}>Diese Woche</div>
+              <div style={{fontSize:34,fontWeight:700,color:'var(--signal)',letterSpacing:'-1.5px',lineHeight:1}}>{doneThisWeek.length}</div>
+              <div style={{fontSize:'var(--text-xs)',color:'var(--muted)',fontWeight:500,marginTop:3}}>Diese Woche</div>
             </div>
-            <div style={{flex:1,height:1,background:'var(--border)'}}/>
+            <div style={{flex:1,height:'0.5px',background:'var(--border2)'}}/>
             <div style={{textAlign:'center'}}>
-              <div style={{fontFamily:'var(--font-mono)',fontSize:'var(--text-xl)',fontWeight:700,color:'var(--mid)',letterSpacing:'-0.5px'}}>{doneLastWeek.length}</div>
-              <div style={{fontSize:'var(--text-xs)',color:'var(--muted)',fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.08em'}}>Letzte Woche</div>
+              <div style={{fontSize:24,fontWeight:700,color:'var(--mid)',letterSpacing:'-1px',lineHeight:1}}>{doneLastWeek.length}</div>
+              <div style={{fontSize:'var(--text-xs)',color:'var(--muted)',fontWeight:500,marginTop:3}}>Letzte Woche</div>
             </div>
             <div style={{padding:'4px 10px',borderRadius:'var(--r-full)',background:diff>0?'var(--signal-bg)':diff<0?'var(--red-bg)':'rgba(15,19,24,0.05)',color:diff>0?'var(--signal)':diff<0?'var(--red)':'var(--muted)',fontFamily:'var(--font-mono)',fontSize:'var(--text-xs)',fontWeight:700}}>
               {diff>0?`+${diff}`:diff===0?'=':`${diff}`}
@@ -1952,7 +1952,7 @@ export default function App() {
                   <span style={{fontSize:10,color:'var(--muted)',fontFamily:'var(--font-mono)',flexShrink:0}}>{a.person}</span>
                 </div>
               ))}
-              {doneThisWeek.length>5&&<div style={{fontSize:'var(--text-xs)',color:'var(--muted)',fontFamily:'var(--font-mono)'}}>+ {doneThisWeek.length-5} weitere</div>}
+              {doneThisWeek.length>5&&<div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>+ {doneThisWeek.length-5} weitere</div>}
             </div>
           )}
         </div>
