@@ -2053,7 +2053,7 @@ export default function App() {
             const pct=items.length>0?Math.round(done/items.length*100):0
             return (
               <div className="card phase-card" key={phase}>
-                <div className="phase-head"><div><div className="phase-name">{phase}</div><div className="phase-sub">{done} von {items.length} erledigt</div></div><div className="phase-pct">{pct}%</div></div>
+                <div className="phase-head"><div><div className="phase-name">{phase}</div></div><div style={{display:'flex',alignItems:'center',gap:'var(--sp3)'}}><div className="phase-sub">{done} / {items.length}</div><div className="phase-pct">{pct}%</div></div></div>
                 <div className="phase-bar"><div className="phase-bar-f" style={{width:`${pct}%`}}/></div>
                 {items.map(a=>{
                   const subs=aufgaben.filter(x=>x.parent_id===a.id)
