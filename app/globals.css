@@ -139,13 +139,19 @@ button { cursor: pointer; }
   border-bottom: 1px solid var(--border);
   display: flex; align-items: flex-start; justify-content: space-between;
 }
+.sidebar-logo-mark {
+  width: 28px; height: 28px; border-radius: var(--r-sm);
+  background: var(--ink); color: var(--surface);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
 .sidebar-logo-name {
-  font-family: var(--font-display); font-size: 11px; font-weight: 800;
-  letter-spacing: 0.30em; color: var(--ink); text-transform: uppercase;
+  font-family: var(--font-display); font-size: 12px; font-weight: 800;
+  letter-spacing: 0.22em; color: var(--ink); text-transform: uppercase;
 }
 .sidebar-logo-sub {
   font-size: 9px; color: var(--muted); letter-spacing: 0.14em;
-  margin-top: 3px; text-transform: uppercase; font-weight: 600;
+  margin-top: 2px; text-transform: uppercase; font-weight: 600;
   font-family: var(--font-mono);
 }
 .nav { padding: 8px; flex: 1; overflow-y: auto; }
@@ -257,6 +263,11 @@ button { cursor: pointer; }
   padding: 10px 20px; border-bottom: 1px solid rgba(185,28,28,0.10); background: rgba(185,28,28,0.06);
 }
 .section-divider { height: 1px; background: var(--border2); margin: 24px 0; }
+/* Heading-Klasse für Abschnitts-Überschriften auf Seiten-Ebene */
+.section-title {
+  font-size: var(--text-md); font-weight: 700; color: var(--ink);
+  margin-bottom: var(--sp3);
+}
 
 /* ── Cockpit Hero ─────────────────────────────────────────── */
 .cockpit-hero {
@@ -1113,20 +1124,6 @@ textarea.form-input { resize: vertical; min-height: 76px; }
   font-family: var(--font-mono); font-size: 9px; color: var(--muted);
   margin-top: 1px; text-transform: uppercase; letter-spacing: 0.07em;
 }
-.sidebar-person-switch {
-  display: flex; gap: 5px; padding: 2px 16px 10px;
-}
-.sidebar-person-btn {
-  width: 26px; height: 26px; border-radius: 50%;
-  border: 1.5px solid var(--border2); background: rgba(255,255,255,0.5);
-  color: var(--slate); font-size: 10px; font-weight: 700;
-  cursor: pointer; display: flex; align-items: center; justify-content: center;
-  transition: all var(--anim-spring);
-  -webkit-tap-highlight-color: transparent;
-}
-.sidebar-person-btn:hover { transform: scale(1.12); }
-.sidebar-person-btn:active { transform: scale(0.9); }
-.sidebar-person-btn.active { color: #fff; border-color: transparent; }
 
 /* ── View transition ──────────────────────────────────────── */
 .view-enter {

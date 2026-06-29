@@ -101,6 +101,13 @@ function LoginScreen({onLogin}:{onLogin:(name:PersonName)=>void}) {
   )
 }
 
+// ── Stateless Module-level Components ────────────────────────────────────
+function SkeletonList({rows=4}:{rows?:number}) {
+  return <>{Array.from({length:rows}).map((_,i)=>(
+    <div key={i} className="skeleton-card"><div className="skeleton skeleton-title"/><div className="skeleton skeleton-meta"/></div>
+  ))}</>
+}
+
 // ── Module-level constants ────────────────────────────────────────────────
 const DEFAULT_READINESS=[
   {id:'produkt',    label:'Produkt freigegeben'},
@@ -248,7 +255,7 @@ export default function App() {
   useEffect(()=>{ if(authed) loadNotifications() },[loadNotifications,authed])
 
   useEffect(()=>{
-    const ch=supabase.channel(`quadras-v8-${Math.random().toString(36).slice(2,8)}`)
+    const ch=supabase.channel('quadras-os-realtime-v1')
       .on('postgres_changes',{event:'*',schema:'public',table:'team_settings'},()=>loadSettings())
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications'},({new:n})=>{
         const notif=n as Notification
@@ -331,7 +338,8 @@ export default function App() {
   const toggleSubtask=async(sub:Aufgabe)=>{
     const next=sub.status==='Erledigt'?'Offen':'Erledigt'
     setAufgaben(prev=>prev.map(x=>x.id===sub.id?{...x,status:next}:x))
-    await supabase.from('aufgaben').update({status:next}).eq('id',sub.id)
+    const {error}=await supabase.from('aufgaben').update({status:next}).eq('id',sub.id)
+    if(error){ setAufgaben(prev=>prev.map(x=>x.id===sub.id?sub:x)); toast('Fehler','error') }
   }
 
   const delAufgabe=(a:Aufgabe)=>confirm(`"${a.titel}" löschen?`,async()=>{
@@ -344,20 +352,23 @@ export default function App() {
 
   const delEntscheid=(e:Entscheidung)=>confirm('Entscheidung löschen?',async()=>{
     setEntscheid(prev=>prev.filter(x=>x.id!==e.id))
-    await supabase.from('entscheidungen').delete().eq('id',e.id); toast('Gelöscht')
+    const {error}=await supabase.from('entscheidungen').delete().eq('id',e.id)
+    if(error){ setEntscheid(prev=>[e,...prev]); toast('Fehler','error') } else toast('Gelöscht')
   })
 
   const delDatei=(d:Datei)=>confirm(`"${d.name}" löschen?`,async()=>{
     setDateien(prev=>prev.filter(x=>x.id!==d.id))
     await supabase.storage.from('dateien').remove([d.dateiname])
-    await supabase.from('dateien').delete().eq('id',d.id); toast('Gelöscht')
+    const {error}=await supabase.from('dateien').delete().eq('id',d.id)
+    if(error){ setDateien(prev=>[d,...prev]); toast('Fehler','error') } else toast('Gelöscht')
   })
 
   const delIdee=(i:DesignIdee)=>confirm('Idee löschen?',async()=>{
     setIdeen(prev=>prev.filter(x=>x.id!==i.id))
     if(designFlyout?.id===i.id) setDesignFlyout(null)
     if(i.dateiname) await supabase.storage.from('design').remove([i.dateiname])
-    await supabase.from('design_ideen').delete().eq('id',i.id); toast('Gelöscht')
+    const {error}=await supabase.from('design_ideen').delete().eq('id',i.id)
+    if(error){ setIdeen(prev=>[i,...prev]); toast('Fehler','error') } else toast('Gelöscht')
   })
 
   const updateFreigabe=async(idee:DesignIdee,status:string)=>{
@@ -464,11 +475,7 @@ export default function App() {
     )
   }
 
-  function SkeletonList({rows=4}:{rows?:number}) {
-    return <>{Array.from({length:rows}).map((_,i)=>(
-      <div key={i} className="skeleton-card"><div className="skeleton skeleton-title"/><div className="skeleton skeleton-meta"/></div>
-    ))}</>
-  }
+
 
   // ── Task Flyout ───────────────────────────────────────────────────────────
   function TaskFlyout() {
@@ -1222,7 +1229,7 @@ export default function App() {
                   if(ids.length>0) await supabase.from('notifications').update({gelesen:true}).in('id',ids)
                 }}>Alle gelesen</button>
               )}
-              <button className="login-notif-close" onClick={close} title="Schließen (Esc)">
+              <button autoFocus className="login-notif-close" onClick={close} title="Schließen (Esc)">
                 <svg style={{width:14,height:14}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
@@ -1281,7 +1288,7 @@ export default function App() {
             </div>
             <div style={{display:'flex',gap:'var(--sp2)',alignItems:'center'}}>
               {unread>0&&<button className="login-notif-mark-btn" onClick={markAllRead}>Alle gelesen</button>}
-              <button className="login-notif-close" onClick={()=>setNotifOpen(false)}>
+              <button autoFocus className="login-notif-close" onClick={()=>setNotifOpen(false)}>
                 <svg style={{width:14,height:14}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
@@ -1501,7 +1508,7 @@ export default function App() {
     return (
       <div style={{marginBottom:'var(--sp5)'}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
-          <div style={{fontSize:'var(--text-md)',fontWeight:700,color:'var(--ink)'}}>Risiken</div>
+          <div className="section-title">Risiken</div>
           <button className="btn btn-xs btn-secondary" onClick={()=>setShow(s=>!s)}>{show?'Abbrechen':'+ Risiko'}</button>
         </div>
         {show&&(
@@ -1748,7 +1755,7 @@ export default function App() {
 
             {areaStats.length>0&&(
               <>
-                <div style={{fontSize:'var(--text-md)',fontWeight:700,marginBottom:'var(--sp3)',color:'var(--ink)'}}>Bereichsstatus</div>
+                <div className="section-title">Bereichsstatus</div>
                 <div className="area-grid" style={{marginBottom:'var(--sp5)'}}>
                   {areaStats.map(a=>{
                     const pct=a.total>0?Math.round(a.done/a.total*100):0
@@ -1770,7 +1777,7 @@ export default function App() {
             )}
 
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
-              <div style={{fontSize:'var(--text-md)',fontWeight:700,color:'var(--ink)'}}>Launch Readiness</div>
+              <div className="section-title" style={{marginBottom:0}}>Launch Readiness</div>
               <div style={{display:'flex',alignItems:'center',gap:'var(--sp3)'}}>
                 <div style={{fontSize:'var(--text-sm)',color:readinessColor,fontWeight:700}}>{readinessDone}/{READINESS_ITEMS.length}</div>
                 <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>{readinessPct}%</div>
@@ -1790,7 +1797,7 @@ export default function App() {
             </div>
 
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
-              <div style={{fontSize:'var(--text-md)',fontWeight:700,color:'var(--ink)'}}>Brand Readiness</div>
+              <div className="section-title" style={{marginBottom:0}}>Brand Readiness</div>
               <div style={{display:'flex',alignItems:'center',gap:'var(--sp3)'}}>
                 <div style={{fontSize:'var(--text-sm)',color:brandColor,fontWeight:700}}>{brandDone}/{BRAND_ITEMS.length}</div>
                 <div style={{fontSize:'var(--text-xs)',color:'var(--muted)'}}>{brandPct}%</div>
@@ -1818,7 +1825,7 @@ export default function App() {
             {offeneEntscheidungen.length>0&&(
               <div style={{marginBottom:'var(--sp5)'}}>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'var(--sp3)'}}>
-                  <div style={{fontSize:'var(--text-md)',fontWeight:700,color:'var(--ink)'}}>Entscheidungen</div>
+                  <div className="section-title" style={{marginBottom:0}}>Entscheidungen</div>
                   <button className="btn btn-xs btn-secondary" onClick={()=>setView('entscheidungen')}>Alle →</button>
                 </div>
                 <div className="card">
@@ -1842,7 +1849,7 @@ export default function App() {
               </div>
             )}
 
-            <div style={{fontSize:'var(--text-md)',fontWeight:700,marginBottom:'var(--sp3)',color:'var(--ink)'}}>Team</div>
+            <div className="section-title">Team</div>
             <div className="card" style={{marginBottom:'var(--sp5)'}}>
               {PERSONEN.map((p,pi)=>{
                 const pA=aufgaben.filter(a=>(a.personen||[a.person]).includes(p.name)&&a.status!=='Erledigt'&&!a.parent_id)
@@ -2245,9 +2252,17 @@ export default function App() {
       <aside className={`sidebar${sidebarOpen?' open':''}`}>
         <div className="sidebar-inner">
           <div className="sidebar-logo">
-            <div>
-              <div className="sidebar-logo-name">Quadras</div>
-              <div className="sidebar-logo-sub">Founder Operating System</div>
+            <div style={{display:'flex',alignItems:'center',gap:10}}>
+              <div className="sidebar-logo-mark">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <rect x="3" y="3" width="14" height="14" rx="2" stroke="currentColor" strokeWidth="1.6"/>
+                  <rect x="7" y="7" width="6" height="6" rx="0.8" fill="currentColor"/>
+                </svg>
+              </div>
+              <div>
+                <div className="sidebar-logo-name">QUADRAS</div>
+                <div className="sidebar-logo-sub">Founder OS</div>
+              </div>
             </div>
             {/* NotificationCenter bell — portal panel rendered at body level */}
             <NotificationCenter/>
@@ -2265,19 +2280,10 @@ export default function App() {
           </nav>
           <div className="sidebar-persona">
             <div className="sidebar-persona-avatar" style={{background:PERSON_HEX[aktiv],boxShadow:`0 0 14px ${PERSON_HEX[aktiv]}55`}}>{aktiv[0]}</div>
-            <div>
+            <div style={{flex:1,minWidth:0}}>
               <div className="sidebar-persona-name" style={{color:PERSON_HEX[aktiv]}}>{aktiv}</div>
               <div className="sidebar-persona-role">{PERSONEN.find(p=>p.name===aktiv)?.role}</div>
             </div>
-          </div>
-          <div className="sidebar-person-switch">
-            {PERSONEN.map(p=>(
-              <button key={p.name} className={`sidebar-person-btn${aktiv===p.name?' active':''}`}
-                style={aktiv===p.name?{background:PERSON_HEX[p.name],borderColor:'transparent'}:{}}
-                onClick={()=>setAktiv(p.name as PersonName)} title={p.name}>
-                {p.name[0]}
-              </button>
-            ))}
           </div>
           <div className="sidebar-stats">
             <div className="stat"><div className="stat-num" style={{color:meineOffen>0?PERSON_HEX[aktiv]:'var(--ink)'}}>{meineOffen}</div><div className="stat-label">Meine</div></div>
