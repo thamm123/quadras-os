@@ -303,7 +303,7 @@ function NotificationCenter({mounted,notifications,notifOpen,setNotifOpen,setSho
 }
 
 // ── CommentRow (modul-level — verhindert useState-in-map Crash) ──────────
-type CommentRowProps = {c:Comment; aktiv:string; onDelete:(id:string)=>void}
+type CommentRowProps = {c:Comment; aktiv:string; onDelete:(id:string, person:string, text:string)=>void}
 function CommentRow({c,aktiv,onDelete}:CommentRowProps) {
   const [confirmDel,setConfirmDel]=useState(false)
   const isAuthor=c.person===aktiv
@@ -316,7 +316,7 @@ function CommentRow({c,aktiv,onDelete}:CommentRowProps) {
         {isAuthor&&(
           confirmDel
             ?<div style={{display:'flex',gap:4,marginLeft:'auto'}}>
-                <button className="btn btn-xs btn-danger" onClick={()=>onDelete(c.id)}>Löschen</button>
+                <button className="btn btn-xs btn-danger" onClick={()=>onDelete(c.id, c.person, c.kommentar)}>Löschen</button>
                 <button className="btn btn-xs btn-secondary" onClick={()=>setConfirmDel(false)}>Abbruch</button>
               </div>
             :<button className="icon-btn del" style={{width:22,height:22,marginLeft:'auto',opacity:0}} title="Kommentar löschen"
@@ -993,10 +993,13 @@ export default function App() {
               <div className="flyout-section-label">Kommentare <span style={{color:'var(--muted)',fontWeight:400}}>{comments.length}</span></div>
               {loadingCom?<div className="skeleton skeleton-line"/>:comments.length===0?<div style={{fontSize:'var(--text-sm)',color:'var(--muted)',padding:'var(--sp1) 0'}}>Noch keine Kommentare</div>:
                 comments.map(c=>(
-                  <CommentRow key={c.id} c={c} aktiv={aktiv} onDelete={async(id)=>{
+                  <CommentRow key={c.id} c={c} aktiv={aktiv} onDelete={async(id, person, text)=>{
                     setComments(prev=>prev.filter(x=>x.id!==id))
                     await supabase.from('aufgabe_comments').delete().eq('id',id)
-                    const {data:deleted}=await supabase.from('notifications').delete().eq('entity_id',a.id).eq('entity_typ','aufgabe').in('typ',['kommentar','mention']).select('id')
+                    const snippet=text.substring(0,60)
+                    const {data:deleted}=await supabase.from('notifications').delete()
+                      .eq('entity_id',a.id).eq('entity_typ','aufgabe').eq('von',person)
+                      .in('typ',['kommentar','mention']).ilike('nachricht',`%${snippet}%`).select('id')
                     if(deleted?.length) setNotifications(prev=>prev.filter(n=>!deleted.some((d:{id:string})=>d.id===n.id)))
                   }}/>
                 ))
