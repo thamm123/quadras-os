@@ -894,13 +894,15 @@ export default function App() {
         setComments(prev=>prev.map(c=>c.id===tempId?newC:c))
       }
 
-      await notifyAll(aktiv,'kommentar',a.titel,`${aktiv}: ${commentText.substring(0,60)}${a.deadline?' · fällig '+fmtDate(a.deadline):''}`,a.id,'aufgabe')
       const mentions=commentText.match(/@(alexander|norman|anna)/gi)||[]
-      for(const m of mentions){
-        const found=PERSONEN.find(p=>m.toLowerCase()==='@'+p.name.toLowerCase())
-        const name=found?.name as PersonName|undefined
-        if(name&&name!==aktiv){
-          await supabase.from('notifications').insert({fuer:name,von:aktiv,typ:'mention',titel:a.titel,nachricht:`${aktiv} hat dich erwähnt: ${commentText.substring(0,80)}`,entity_id:a.id,entity_typ:'aufgabe'})
+      const mentionedNames=mentions.map(m=>PERSONEN.find(p=>m.toLowerCase()==='@'+p.name.toLowerCase())?.name).filter(Boolean) as PersonName[]
+      // Erwähnte Personen bekommen nur die Mention-Notification, nicht zusätzlich die Kommentar-Notification
+      const alleAußerMir=PERSONEN.map(p=>p.name).filter(n=>n!==aktiv) as PersonName[]
+      for(const n of alleAußerMir){
+        if(mentionedNames.includes(n)){
+          await supabase.from('notifications').insert({fuer:n,von:aktiv,typ:'mention',titel:a.titel,nachricht:`${aktiv} hat dich erwähnt: ${commentText.substring(0,80)}`,entity_id:a.id,entity_typ:'aufgabe'})
+        } else {
+          await supabase.from('notifications').insert({fuer:n,von:aktiv,typ:'kommentar',titel:a.titel,nachricht:`${aktiv}: ${commentText.substring(0,60)}${a.deadline?' · fällig '+fmtDate(a.deadline):''}`,entity_id:a.id,entity_typ:'aufgabe'})
         }
       }
       await logActivity('aufgabe',a.id,a.titel,'kommentiert',aktiv)
