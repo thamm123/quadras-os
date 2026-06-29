@@ -33,6 +33,20 @@ const Ico = {
   empty:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 15s1.5-2 4-2 4 2 4 2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>,
 }
 
+// ── Relative timestamp ────────────────────────────────────────────────────
+function fmtRelative(iso:string):string {
+  const diff=Date.now()-new Date(iso).getTime()
+  const min=Math.floor(diff/60000)
+  if(min<1)  return 'Gerade eben'
+  if(min<60) return `vor ${min} Min`
+  const h=Math.floor(min/60)
+  if(h<24)   return `vor ${h} Std`
+  if(h<48)   return 'Gestern'
+  const d=Math.floor(h/24)
+  if(d<7)    return `vor ${d} Tagen`
+  return new Date(iso).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})
+}
+
 // ── Login Screen ─────────────────────────────────────────────────────────
 function LoginScreen({onLogin}:{onLogin:(name:PersonName)=>void}) {
   const [email,setEmail]=useState('')
@@ -43,7 +57,7 @@ function LoginScreen({onLogin}:{onLogin:(name:PersonName)=>void}) {
   const login=async()=>{
     if(!email.trim()||!password.trim()){setError('Bitte E-Mail und Passwort eingeben');return}
     setLoading(true); setError('')
-    const {data,error:err}=await supabase.auth.signInWithPassword({email:email.trim(),password})
+    const {error:err}=await supabase.auth.signInWithPassword({email:email.trim(),password})
     if(err){setError('Falsches E-Mail oder Passwort');setLoading(false);return}
     const emailLower=email.toLowerCase()
     const person:PersonName=
@@ -55,23 +69,24 @@ function LoginScreen({onLogin}:{onLogin:(name:PersonName)=>void}) {
   }
 
   return (
-    <div style={{minHeight:'100vh',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',padding:'var(--sp5)'}}>
-      <div style={{width:'100%',maxWidth:380}}>
-        <div style={{textAlign:'center',marginBottom:'var(--sp8)'}}>
-          <div style={{fontFamily:'var(--font-display)',fontSize:'22px',fontWeight:700,letterSpacing:'0.18em',textTransform:'uppercase',color:'var(--ink)',marginBottom:'var(--sp1)'}}>QUADRAS</div>
-          <div style={{fontSize:'11px',color:'var(--muted)',letterSpacing:'0.1em',textTransform:'uppercase',fontWeight:500}}>Founder Operating System</div>
+    <div className="login-root">
+      <div className="login-volt-accent"/>
+      <div className="login-content">
+        <div className="login-brand">
+          <div className="login-logo">QUADRAS</div>
+          <div className="login-tagline">Founder Operating System</div>
         </div>
-        <div style={{background:'var(--surface)',borderRadius:'var(--r-xl)',border:'1px solid var(--border)',boxShadow:'var(--sh-md)',padding:'var(--sp6)'}}>
-          <div style={{fontSize:'var(--text-lg)',fontWeight:700,color:'var(--ink)',marginBottom:'var(--sp5)'}}>Anmelden</div>
-          {error&&<div style={{background:'var(--red-bg)',color:'var(--red)',padding:'var(--sp2) var(--sp3)',borderRadius:'var(--r-sm)',fontSize:'var(--text-sm)',marginBottom:'var(--sp4)',fontWeight:500}}>{error}</div>}
+        <div className="login-card">
+          <div className="login-card-title">Anmelden</div>
+          {error&&<div className="login-error">{error}</div>}
           <div style={{marginBottom:'var(--sp3)'}}>
-            <label style={{display:'block',fontSize:'var(--text-xs)',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:'var(--sp1)'}}>E-Mail</label>
-            <input autoFocus className="form-input" type="email" placeholder="alexander@qua-dras.com" value={email}
+            <label className="login-label">E-Mail</label>
+            <input autoFocus className="login-input" type="email" placeholder="alexander@qua-dras.com" value={email}
               onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&login()}/>
           </div>
           <div style={{marginBottom:'var(--sp5)'}}>
-            <label style={{display:'block',fontSize:'var(--text-xs)',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:'var(--sp1)'}}>Passwort</label>
-            <input className="form-input" type="password" placeholder="••••••••" value={password}
+            <label className="login-label">Passwort</label>
+            <input className="login-input" type="password" placeholder="••••••••" value={password}
               onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==='Enter'&&login()}/>
           </div>
           <button className="btn btn-primary" style={{width:'100%',justifyContent:'center',padding:'var(--sp3)',gap:8}}
@@ -80,9 +95,7 @@ function LoginScreen({onLogin}:{onLogin:(name:PersonName)=>void}) {
             {loading?'Anmelden…':'Anmelden'}
           </button>
         </div>
-        <div style={{textAlign:'center',marginTop:'var(--sp4)',fontSize:'var(--text-xs)',color:'var(--muted)'}}>
-          Nur für das QUADRAS Team
-        </div>
+        <div className="login-footer">Nur für das QUADRAS Team</div>
       </div>
     </div>
   )
@@ -135,6 +148,7 @@ export default function App() {
   const [flyout,      setFlyout]      = useState<Aufgabe|null>(null)
   const [designFlyout,setDesignFlyout]= useState<DesignIdee|null>(null)
   const [confirmCb,   setConfirmCb]   = useState<{msg:string;fn:()=>void}|null>(null)
+  const [handoverModal,setHandoverModal]=useState<{task:Aufgabe;toPerson:PersonName}|null>(null)
   const [uploading,   setUploading]   = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [fPerson,setFPerson]=useState('Alle')
@@ -151,6 +165,8 @@ export default function App() {
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [notifOpen, setNotifOpen] = useState(false)
+  const [showLoginNotif, setShowLoginNotif] = useState(false)
+  const [lastLoginTs, setLastLoginTs] = useState<string|null>(null)
   // FIX: Track bell button position for portal-rendered notification panel
   const [notifPos, setNotifPos] = useState<{top:number;right:number}>({top:60,right:16})
   const bellRef = useRef<HTMLButtonElement>(null)
@@ -275,10 +291,16 @@ export default function App() {
   },[loadActivity])
 
   useEffect(()=>{
+    if(!authed) return
+    const titles:Record<View,string>={heute:'Heute',plan:'Launch Plan',aufgaben:'Aufgaben',design:'Design Studio',dateien:'Dateien',entscheidungen:'Entscheidungen'}
+    document.title=`${titles[view]} — QUADRAS OS`
+  },[view,authed])
+
+  useEffect(()=>{
     const h=(e:KeyboardEvent)=>{
       const tag=(e.target as HTMLElement).tagName
       if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return
-      if(e.key==='Escape'){ setModal(null); setFlyout(null); setDesignFlyout(null); setSidebarOpen(false); setCmdOpen(false); setFocusTask(null); setNotifOpen(false) }
+      if(e.key==='Escape'){ setModal(null); setFlyout(null); setDesignFlyout(null); setSidebarOpen(false); setCmdOpen(false); setFocusTask(null); setNotifOpen(false); setShowLoginNotif(false) }
       if(modal||flyout||designFlyout) return
       if((e.metaKey||e.ctrlKey)&&e.key==='k'){ e.preventDefault(); setCmdOpen(o=>!o); return }
       if(e.key==='n'||e.key==='N'){ setEditA(null); setModal('aufgabe') }
@@ -298,7 +320,12 @@ export default function App() {
     setFlyout(prev=>prev?.id===a.id?optimistic:prev)
     const {error}=await supabase.from('aufgaben').update({status:next,completed_at:next==='Erledigt'?new Date().toISOString():null}).eq('id',a.id)
     if(error){ setAufgaben(prev=>prev.map(x=>x.id===a.id?a:x)); toast('Fehler','error') }
-    else await logActivity('aufgabe',a.id,a.titel,next==='Erledigt'?'erledigt':'wieder geöffnet',aktiv)
+    else {
+      await logActivity('aufgabe',a.id,a.titel,next==='Erledigt'?'erledigt':'wieder geöffnet',aktiv)
+      if(a.ist_hauptaufgabe&&next==='Erledigt') {
+        await notifyAll(aktiv,'meilenstein',a.titel,`${aktiv} hat Meilenstein abgeschlossen: ${a.titel}`,a.id,'aufgabe')
+      }
+    }
   }
 
   const toggleSubtask=async(sub:Aufgabe)=>{
@@ -629,11 +656,28 @@ export default function App() {
             <div className="flyout-section">
               <div className="flyout-section-label">Kommentare <span style={{color:'var(--muted)',fontWeight:400}}>{comments.length}</span></div>
               {loadingCom?<div className="skeleton skeleton-line"/>:comments.length===0?<div style={{fontSize:'var(--text-sm)',color:'var(--muted)',padding:'var(--sp1) 0'}}>Noch keine Kommentare</div>:
-                comments.map(c=>(
-                  <div key={c.id} className="comment">
+                comments.map(c=>{
+                  const isAuthor=c.person===aktiv
+                  const [confirmDel,setConfirmDel]=useState(false)
+                  const delComment=async()=>{
+                    setComments(prev=>prev.filter(x=>x.id!==c.id))
+                    await supabase.from('aufgabe_comments').delete().eq('id',c.id)
+                  }
+                  return (
+                  <div key={c.id} className="comment" style={{borderLeftColor:PERSON_HEX[c.person]||'var(--border2)'}}>
                     <div className="comment-header">
+                      <div style={{width:20,height:20,borderRadius:'50%',background:PERSON_HEX[c.person]||'var(--mid)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:9,fontWeight:800,flexShrink:0}}>{c.person[0]}</div>
                       <span className="comment-person" style={{color:PERSON_HEX[c.person]||'var(--slate)'}}>{c.person}</span>
                       <span className="comment-time">{new Date(c.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
+                      {isAuthor&&(
+                        confirmDel
+                          ?<div style={{display:'flex',gap:4,marginLeft:'auto'}}>
+                              <button className="btn btn-xs btn-danger" onClick={delComment}>Löschen</button>
+                              <button className="btn btn-xs btn-secondary" onClick={()=>setConfirmDel(false)}>Abbruch</button>
+                            </div>
+                          :<button className="icon-btn del" style={{width:22,height:22,marginLeft:'auto',opacity:0}} title="Kommentar löschen"
+                              onClick={()=>setConfirmDel(true)}>{Ico.trash}</button>
+                      )}
                     </div>
                     {c.kommentar&&<div className="comment-text">
                       {c.kommentar.split(/(@(?:Alexander|Norman|Anna))/g).map((part,i)=>
@@ -642,7 +686,6 @@ export default function App() {
                           :<span key={i}>{part}</span>
                       )}
                     </div>}
-                    {/* FIX: render attachment — check anhang_url is valid https URL */}
                     {c.anhang_url&&c.anhang_url.startsWith('https://')&&(
                       <div style={{marginTop:'var(--sp2)'}}>
                         {c.anhang_typ==='bild'
@@ -652,15 +695,12 @@ export default function App() {
                               style={{maxWidth:'100%',borderRadius:'var(--r-md)',maxHeight:240,objectFit:'cover',cursor:'pointer',display:'block',marginTop:2}}
                               onClick={()=>window.open(c.anhang_url,'_blank')}
                               onError={e=>{
-                                // FIX: hide broken images but show filename link as fallback
                                 const img=e.target as HTMLImageElement
                                 const wrapper=img.parentElement
                                 if(wrapper){
                                   img.style.display='none'
                                   const link=document.createElement('a')
-                                  link.href=c.anhang_url
-                                  link.target='_blank'
-                                  link.rel='noopener noreferrer'
+                                  link.href=c.anhang_url; link.target='_blank'; link.rel='noopener noreferrer'
                                   link.textContent=c.anhang_name||'Bild öffnen'
                                   link.style.cssText='font-size:12px;color:var(--signal);text-decoration:underline'
                                   wrapper.appendChild(link)
@@ -675,7 +715,7 @@ export default function App() {
                       </div>
                     )}
                   </div>
-                ))
+                )})
               }
               {/* Comment input */}
               <div style={{marginBottom:'var(--sp2)'}}>
@@ -720,16 +760,9 @@ export default function App() {
               <div style={{display:'flex',gap:'var(--sp2)',flexWrap:'wrap'}}>
                 {PERSONEN.filter(p=>p.name!==a.person).map(p=>(
                   <button key={p.name} className="btn btn-secondary btn-sm" style={{color:PERSON_HEX[p.name]}}
-                    onClick={async()=>{
-                      const note=window.prompt(`Übergabe-Notiz für ${p.name} (optional):`)
-                      if(note===null) return
-                      const upd={person:p.name,personen:[p.name],beschreibung:note?`${a.beschreibung?a.beschreibung+'\n\n':''}Übergabe von ${a.person}: ${note}`:a.beschreibung}
-                      setAufgaben(prev=>prev.map(x=>x.id===a.id?{...x,...upd}:x))
-                      setFlyout(prev=>prev?{...prev,...upd}:null)
-                      await supabase.from('aufgaben').update(upd).eq('id',a.id)
-                      await supabase.from('notifications').insert({fuer:p.name,von:aktiv,typ:'zuweisung',titel:a.titel,nachricht:`${aktiv} hat die Aufgabe an dich übergeben${note?' — '+note:''}`,entity_id:a.id,entity_typ:'aufgabe'})
-                      await logActivity('aufgabe',a.id,a.titel,`an ${p.name} übergeben`,aktiv)
-                    }}>→ {p.name}</button>
+                    onClick={()=>setHandoverModal({task:a,toPerson:p.name as PersonName})}>
+                    → {p.name}
+                  </button>
                 ))}
               </div>
             </div>
@@ -1005,6 +1038,49 @@ export default function App() {
     )
   }
 
+  function HandoverModal() {
+    const {task,toPerson}=handoverModal!
+    const [note,setNote]=useState('')
+    const [saving,setSaving]=useState(false)
+    const doHandover=async()=>{
+      setSaving(true)
+      const upd={person:toPerson,personen:[toPerson],beschreibung:note?`${task.beschreibung?task.beschreibung+'\n\n':''}Übergabe von ${task.person}: ${note}`:task.beschreibung}
+      setAufgaben(prev=>prev.map(x=>x.id===task.id?{...x,...upd}:x))
+      setFlyout(prev=>prev?{...prev,...upd}:null)
+      await supabase.from('aufgaben').update(upd).eq('id',task.id)
+      await supabase.from('notifications').insert({fuer:toPerson,von:aktiv,typ:'zuweisung',titel:task.titel,nachricht:`${aktiv} hat die Aufgabe an dich übergeben${note?' — '+note:''}`,entity_id:task.id,entity_typ:'aufgabe'})
+      await logActivity('aufgabe',task.id,task.titel,`an ${toPerson} übergeben`,aktiv)
+      setSaving(false); setHandoverModal(null)
+      toast(`Übergeben an ${toPerson}`,'success')
+    }
+    return (
+      <div className="overlay" onClick={e=>e.target===e.currentTarget&&setHandoverModal(null)}>
+        <div className="modal confirm-modal" style={{maxWidth:420}}>
+          <div className="modal-header">
+            <span className="modal-title">Übergabe an <span style={{color:PERSON_HEX[toPerson]}}>{toPerson}</span></span>
+            <button className="modal-close" onClick={()=>setHandoverModal(null)}>{Ico.x}</button>
+          </div>
+          <div className="modal-body">
+            <div style={{fontSize:'var(--text-sm)',color:'var(--slate)',marginBottom:'var(--sp4)',lineHeight:1.5}}>
+              <strong style={{color:'var(--ink)'}}>{task.titel}</strong> wird an {toPerson} übergeben.
+            </div>
+            <div className="form-group">
+              <label className="form-label">Übergabe-Notiz (optional)</label>
+              <textarea autoFocus className="form-input" placeholder="Was soll die Person wissen?" value={note}
+                onChange={e=>setNote(e.target.value)} style={{minHeight:80}}
+                onKeyDown={e=>{if(e.key==='Enter'&&e.metaKey) doHandover()}}/>
+              <div style={{fontSize:'var(--text-xs)',color:'var(--muted)',marginTop:4,fontFamily:'var(--font-mono)'}}>⌘↵ zum Senden</div>
+            </div>
+            <div className="confirm-acts">
+              <button className="btn btn-secondary" onClick={()=>setHandoverModal(null)}>Abbrechen</button>
+              <button className="btn btn-primary" onClick={doHandover} disabled={saving}>{saving?'Übergeben…':`An ${toPerson} übergeben`}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   function ConfirmModal() {
     return (
       <div className="overlay" onClick={e=>e.target===e.currentTarget&&setModal(null)}>
@@ -1019,80 +1095,208 @@ export default function App() {
     )
   }
 
-  // ── Notification Center — FIX: rendered as React Portal at document.body ──
-  // This escapes the sidebar's backdrop-filter stacking context entirely.
+  // ── Shared notification helpers ───────────────────────────────────────────
+  const markAllRead=async()=>{
+    setNotifications(prev=>prev.map(n=>({...n,gelesen:true})))
+    const ids=notifications.filter(n=>!n.gelesen).map(n=>n.id)
+    if(ids.length>0) await supabase.from('notifications').update({gelesen:true}).in('id',ids)
+  }
+
+  const openAndMark=(n:Notification,closePanel:()=>void)=>{
+    if(n.entity_id){
+      const a=aufgaben.find(x=>x.id===n.entity_id)
+      if(a){setFlyout(a);closePanel()}
+    }
+    if(!n.gelesen){
+      setNotifications(prev=>prev.map(x=>x.id===n.id?{...x,gelesen:true}:x))
+      supabase.from('notifications').update({gelesen:true}).eq('id',n.id)
+    }
+  }
+
+  const delNotif=async(id:string)=>{
+    setNotifications(prev=>prev.filter(x=>x.id!==id))
+    await supabase.from('notifications').delete().eq('id',id)
+  }
+
+  function NotifTypIcon({typ}:{typ:string}) {
+    const styles:Record<string,{bg:string;col:string}> = {
+      kommentar: {bg:'rgba(29,78,216,0.12)', col:'var(--blue)'},
+      mention:   {bg:'rgba(180,83,9,0.12)',  col:'var(--amber)'},
+      zuweisung: {bg:'rgba(26,107,70,0.12)', col:'var(--signal)'},
+      meilenstein:{bg:'rgba(200,255,60,0.15)',col:'#7aad00'},
+    }
+    const s=styles[typ]||{bg:'rgba(10,12,15,0.07)',col:'var(--mid)'}
+    const icons:Record<string,JSX.Element>={
+      kommentar:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>,
+      mention:    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 006 0v-1a10 10 0 10-3.92 7.94"/></svg>,
+      zuweisung:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
+      meilenstein:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
+    }
+    const icon=icons[typ]||<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+    return <div className="notif-type-icon" style={{background:s.bg,color:s.col}}>{icon}</div>
+  }
+
+  function NotifRow({n,onOpen,dark=false}:{n:Notification;onOpen:()=>void;dark?:boolean}) {
+    const isKommentar=n.typ==='kommentar'
+    const authorColor=PERSON_HEX[n.von]||'var(--mid)'
+    const unreadBg=dark?'rgba(255,255,255,0.07)':'rgba(255,255,255,0.92)'
+    const readBg='transparent'
+    return (
+      <div
+        className={`notif-item${isKommentar?' notif-item--kommentar':''}${!n.gelesen?' notif-item--unread':''}`}
+        style={{
+          background:!n.gelesen?unreadBg:readBg,
+          ...(isKommentar&&!n.gelesen?{borderLeftColor:authorColor}:{})
+        }}>
+        <div style={{flexShrink:0,cursor:'pointer'}} onClick={onOpen}>
+          {isKommentar
+            ?<div className="notif-avatar" style={{background:authorColor}}>{n.von[0]}</div>
+            :<NotifTypIcon typ={n.typ}/>
+          }
+        </div>
+        <div style={{flex:1,minWidth:0,cursor:'pointer'}} onClick={onOpen}>
+          <div style={{fontSize:'var(--text-sm)',fontWeight:n.gelesen?400:700,color:dark?'rgba(255,255,255,0.92)':'var(--ink)',marginBottom:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+            {n.titel}
+          </div>
+          {isKommentar&&<div style={{fontSize:'var(--text-xs)',fontWeight:600,color:authorColor,marginBottom:2,fontFamily:'var(--font-mono)'}}>{n.von}</div>}
+          <div style={{fontSize:'var(--text-xs)',color:dark?(n.gelesen?'rgba(255,255,255,0.35)':'rgba(255,255,255,0.6)'):(n.gelesen?'var(--muted)':'var(--mid)'),lineHeight:1.4,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>
+            {isKommentar?n.nachricht.replace(/^[^:]+:\s*/,''):n.nachricht}
+          </div>
+          <div style={{fontSize:10,color:dark?'rgba(255,255,255,0.28)':'var(--muted)',marginTop:3,fontFamily:'var(--font-mono)'}}>{fmtRelative(n.created_at)}</div>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,flexShrink:0}}>
+          {!n.gelesen&&<div style={{width:7,height:7,borderRadius:'50%',background:isKommentar?authorColor:'var(--signal)',marginTop:4,flexShrink:0}}/>}
+          <button onClick={()=>delNotif(n.id)}
+            style={{width:20,height:20,borderRadius:'50%',border:'none',background:'transparent',cursor:'pointer',color:dark?'rgba(255,255,255,0.35)':'var(--muted)',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center',opacity:0.5}}
+            title="Löschen">×</button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Schritt 4: LoginNotifPanel — Slide-in nach Login ──────────────────────
+  function LoginNotifPanel() {
+    const newSince=lastLoginTs
+      ?notifications.filter(n=>n.created_at>lastLoginTs)
+      :notifications.filter(n=>!n.gelesen)
+
+    const sektionen=[
+      {typ:'kommentar',  label:'Kommentare',   icon:'💬'},
+      {typ:'mention',    label:'Erwähnungen',   icon:'@'},
+      {typ:'zuweisung',  label:'Zuweisungen',   icon:'→'},
+      {typ:'meilenstein',label:'Meilensteine',  icon:'★'},
+    ]
+
+    const close=()=>{
+      setShowLoginNotif(false)
+      // ungelesene als gelesen markieren
+      const ids=newSince.filter(n=>!n.gelesen).map(n=>n.id)
+      if(ids.length>0){
+        setNotifications(prev=>prev.map(n=>ids.includes(n.id)?{...n,gelesen:true}:n))
+        supabase.from('notifications').update({gelesen:true}).in('id',ids)
+      }
+    }
+
+    if(!mounted) return null
+    return createPortal(
+      <>
+        <div className="login-notif-backdrop" onClick={close}/>
+        <div className="login-notif-panel">
+          {/* Header */}
+          <div className="login-notif-header">
+            <div>
+              <div className="login-notif-title">Willkommen zurück, {aktiv}</div>
+              <div className="login-notif-sub">
+                {lastLoginTs
+                  ?<>Seit deinem letzten Login ({fmtRelative(lastLoginTs)})</>
+                  :'Deine Benachrichtigungen'
+                }
+                {newSince.length>0&&<span className="login-notif-badge">{newSince.length} neu</span>}
+              </div>
+            </div>
+            <div style={{display:'flex',gap:'var(--sp2)',alignItems:'center'}}>
+              {newSince.some(n=>!n.gelesen)&&(
+                <button className="login-notif-mark-btn" onClick={async()=>{
+                  const ids=newSince.filter(n=>!n.gelesen).map(n=>n.id)
+                  setNotifications(prev=>prev.map(n=>ids.includes(n.id)?{...n,gelesen:true}:n))
+                  if(ids.length>0) await supabase.from('notifications').update({gelesen:true}).in('id',ids)
+                }}>Alle gelesen</button>
+              )}
+              <button className="login-notif-close" onClick={close} title="Schließen (Esc)">
+                <svg style={{width:14,height:14}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Body */}
+          <div className="login-notif-body">
+            {newSince.length===0?(
+              <div className="login-notif-empty">
+                <svg style={{width:36,height:36,opacity:0.25,marginBottom:12}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+                <div>Alles auf dem neusten Stand</div>
+              </div>
+            ):(
+              sektionen.map(sek=>{
+                const items=newSince.filter(n=>n.typ===sek.typ)
+                if(items.length===0) return null
+                return (
+                  <div key={sek.typ} className="login-notif-section">
+                    <div className="login-notif-section-label">{sek.label} <span className="login-notif-section-count">{items.length}</span></div>
+                    {items.map(n=>(
+                      <NotifRow key={n.id} n={n} dark={true} onOpen={()=>openAndMark(n,close)}/>
+                    ))}
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+      </>,
+      document.body
+    )
+  }
+
+  // ── Schritt 5: NotificationCenter Glocke — gleiches Panel-Design ──────────
   function NotificationCenter() {
     const unread = notifications.filter(n=>!n.gelesen).length
+    const unreadAny = unread>0
 
     const handleBellClick=(e:React.MouseEvent)=>{
       e.stopPropagation()
-      if(bellRef.current){
-        const r=bellRef.current.getBoundingClientRect()
-        const panelWidth=360
-        const padding=16
-        const rightFromEdge=window.innerWidth-r.right+8
-        const clampedRight=Math.min(
-          Math.max(padding, rightFromEdge),
-          window.innerWidth-panelWidth-padding
-        )
-        setNotifPos({
-          top: r.bottom+8,
-          right: Math.max(padding, clampedRight)
-        })
-      }
+      setShowLoginNotif(false)
       setNotifOpen(o=>!o)
     }
 
-    const markAllRead=async()=>{
-      setNotifications(prev=>prev.map(n=>({...n,gelesen:true})))
-      const ids=notifications.filter(n=>!n.gelesen).map(n=>n.id)
-      if(ids.length>0) await supabase.from('notifications').update({gelesen:true}).in('id',ids)
-    }
-
-    const typIcon=(t:string)=>{
-      if(t==='kommentar') return '💬'
-      if(t==='mention') return '👋'
-      if(t==='zuweisung') return '✅'
-      if(t==='aufgabe_neu') return '🆕'
-      return '📌'
-    }
-
-    // FIX: Portal panel rendered outside sidebar DOM tree
-    const panel = notifOpen && mounted ? createPortal(
+    if(!mounted) return null
+    const panel = notifOpen ? createPortal(
       <>
-        {/* Invisible backdrop to close panel on outside click */}
-        <div className="notif-backdrop" onClick={()=>setNotifOpen(false)}/>
-        <div
-          className="notif-panel"
-          style={{top: notifPos.top, right: notifPos.right}}
-        >
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'var(--sp4) var(--sp5) var(--sp3)',borderBottom:'1px solid var(--border)'}}>
-            <div style={{fontFamily:'var(--font-mono)',fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.13em'}}>Benachrichtigungen</div>
-            {notifications.length>0&&<button onClick={markAllRead} style={{fontSize:'var(--text-xs)',color:'var(--signal)',background:'none',border:'none',cursor:'pointer',fontFamily:'var(--font-mono)',fontWeight:600}}>Alle gelesen</button>}
-          </div>
-          <div style={{maxHeight:420,overflowY:'auto'}}>
-            {notifications.length===0&&<div style={{padding:'var(--sp8)',textAlign:'center',fontSize:'var(--text-sm)',color:'var(--muted)'}}>Keine Benachrichtigungen</div>}
-            {notifications.slice(0,20).map(n=>(
-              <div key={n.id} style={{display:'flex',gap:'var(--sp3)',padding:'var(--sp3) var(--sp4)',borderBottom:'1px solid var(--border)',background:n.gelesen?'transparent':'rgba(62,111,90,0.04)',transition:'background var(--anim-micro)'}}>
-                <div style={{fontSize:16,flexShrink:0,marginTop:1,cursor:n.entity_id?'pointer':'default'}}
-                  onClick={()=>{if(n.entity_id){const a=aufgaben.find(x=>x.id===n.entity_id);if(a){setFlyout(a);setNotifOpen(false)}}}}>
-                  {typIcon(n.typ)}
-                </div>
-                <div style={{flex:1,minWidth:0,cursor:n.entity_id?'pointer':'default'}}
-                  onClick={()=>{if(n.entity_id){const a=aufgaben.find(x=>x.id===n.entity_id);if(a){setFlyout(a);setNotifOpen(false)}}}}>
-                  <div style={{fontSize:'var(--text-sm)',fontWeight:n.gelesen?400:600,color:'var(--ink)',marginBottom:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{n.titel}</div>
-                  <div style={{fontSize:'var(--text-xs)',color:'var(--mid)',lineHeight:1.4}}>{n.nachricht}</div>
-                  <div style={{fontSize:10,color:'var(--muted)',marginTop:2,fontFamily:'var(--font-mono)'}}>{new Date(n.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
-                </div>
-                <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,flexShrink:0}}>
-                  {!n.gelesen&&<div style={{width:6,height:6,borderRadius:'50%',background:'var(--signal)',marginTop:5}}/>}
-                  <button
-                    onClick={async()=>{setNotifications(prev=>prev.filter(x=>x.id!==n.id));await supabase.from('notifications').delete().eq('id',n.id)}}
-                    style={{width:18,height:18,borderRadius:'50%',border:'none',background:'transparent',cursor:'pointer',color:'var(--muted)',fontSize:11,display:'flex',alignItems:'center',justifyContent:'center',opacity:0.5}}
-                    title="Löschen">×</button>
-                </div>
+        <div className="login-notif-backdrop" onClick={()=>setNotifOpen(false)}/>
+        <div className="login-notif-panel">
+          <div className="login-notif-header">
+            <div>
+              <div className="login-notif-title">Benachrichtigungen</div>
+              <div className="login-notif-sub">
+                {unread>0?<><span className="login-notif-badge">{unread} ungelesen</span></>:'Alles gelesen'}
               </div>
-            ))}
+            </div>
+            <div style={{display:'flex',gap:'var(--sp2)',alignItems:'center'}}>
+              {unread>0&&<button className="login-notif-mark-btn" onClick={markAllRead}>Alle gelesen</button>}
+              <button className="login-notif-close" onClick={()=>setNotifOpen(false)}>
+                <svg style={{width:14,height:14}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          </div>
+          <div className="login-notif-body">
+            {notifications.length===0?(
+              <div className="login-notif-empty">
+                <svg style={{width:36,height:36,opacity:0.25,marginBottom:12}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+                <div>Keine Benachrichtigungen</div>
+              </div>
+            ):(
+              notifications.slice(0,30).map(n=>(
+                <NotifRow key={n.id} n={n} dark={true} onOpen={()=>openAndMark(n,()=>setNotifOpen(false))}/>
+              ))
+            )}
           </div>
         </div>
       </>,
@@ -1101,12 +1305,14 @@ export default function App() {
 
     return (
       <div style={{position:'relative',display:'inline-block'}}>
-        <button
-          ref={bellRef}
-          onClick={handleBellClick}
-          style={{width:34,height:34,borderRadius:'50%',border:'1px solid var(--border2)',background:unread>0?'var(--ink)':'rgba(255,255,255,0.7)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',position:'relative',transition:'all var(--anim-micro)',backdropFilter:'blur(8px)',color:unread>0?'#fff':'var(--mid)'}}>
-          <svg style={{width:15,height:15,stroke:unread>0?'#fff':'var(--mid)'}} viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
-          {unread>0&&<div style={{position:'absolute',top:-3,right:-3,width:16,height:16,borderRadius:'50%',background:'var(--red)',border:'2px solid white',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff',fontFamily:'var(--font-mono)'}}>{unread>9?'9+':unread}</div>}
+        <button ref={bellRef} onClick={handleBellClick}
+          style={{width:34,height:34,borderRadius:'50%',border:'1px solid var(--border2)',background:unreadAny?'var(--ink)':'rgba(255,255,255,0.7)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',position:'relative',transition:'all var(--anim-micro)',backdropFilter:'blur(8px)',color:unreadAny?'#fff':'var(--mid)'}}>
+          <svg style={{width:15,height:15,stroke:unreadAny?'#fff':'var(--mid)'}} viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+          {unreadAny&&(
+            <div style={{position:'absolute',top:-3,right:-3,width:16,height:16,borderRadius:'50%',background:'var(--red)',border:'2px solid white',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff',fontFamily:'var(--font-mono)',animation:'badgePulse 2s ease-in-out infinite'}}>
+              {unread>9?'9+':unread}
+            </div>
+          )}
         </button>
         {panel}
       </div>
@@ -2009,7 +2215,15 @@ export default function App() {
   ]
 
   if(!authChecked) return <div style={{minHeight:'100vh',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}><div style={{fontSize:'var(--text-sm)',color:'var(--muted)'}}>Laden…</div></div>
-  if(!authed) return <LoginScreen onLogin={(name)=>{setAktiv(name);setAuthed(true)}}/>
+  if(!authed) return <LoginScreen onLogin={(name)=>{
+    const key=`qos-last-login-${name}`
+    const prev=typeof window!=='undefined'?localStorage.getItem(key):null
+    setLastLoginTs(prev)
+    localStorage.setItem(key, new Date().toISOString())
+    setAktiv(name)
+    setAuthed(true)
+    setShowLoginNotif(true)
+  }}/>
 
   return (
     <div className="app">
@@ -2036,6 +2250,22 @@ export default function App() {
               </button>
             ))}
           </nav>
+          <div className="sidebar-persona">
+            <div className="sidebar-persona-avatar" style={{background:PERSON_HEX[aktiv],boxShadow:`0 0 14px ${PERSON_HEX[aktiv]}55`}}>{aktiv[0]}</div>
+            <div>
+              <div className="sidebar-persona-name" style={{color:PERSON_HEX[aktiv]}}>{aktiv}</div>
+              <div className="sidebar-persona-role">{PERSONEN.find(p=>p.name===aktiv)?.role}</div>
+            </div>
+          </div>
+          <div className="sidebar-person-switch">
+            {PERSONEN.map(p=>(
+              <button key={p.name} className={`sidebar-person-btn${aktiv===p.name?' active':''}`}
+                style={aktiv===p.name?{background:PERSON_HEX[p.name],borderColor:'transparent'}:{}}
+                onClick={()=>setAktiv(p.name as PersonName)} title={p.name}>
+                {p.name[0]}
+              </button>
+            ))}
+          </div>
           <div className="sidebar-stats">
             <div className="stat"><div className="stat-num" style={{color:meineOffen>0?PERSON_HEX[aktiv]:'var(--ink)'}}>{meineOffen}</div><div className="stat-label">Meine</div></div>
             <div className="stat"><div className="stat-num">{offenGesamt}</div><div className="stat-label">Team</div></div>
@@ -2049,12 +2279,14 @@ export default function App() {
       </aside>
 
       <main className="main">
-        {view==='heute'&&<HeuteView/>}
-        {view==='plan'&&<PlanView/>}
-        {view==='aufgaben'&&<AufgabenView/>}
-        {view==='design'&&<DesignView/>}
-        {view==='dateien'&&<DateienView/>}
-        {view==='entscheidungen'&&<EntscheidungenView/>}
+        <div key={view} className="view-enter">
+          {view==='heute'&&<HeuteView/>}
+          {view==='plan'&&<PlanView/>}
+          {view==='aufgaben'&&<AufgabenView/>}
+          {view==='design'&&<DesignView/>}
+          {view==='dateien'&&<DateienView/>}
+          {view==='entscheidungen'&&<EntscheidungenView/>}
+        </div>
       </main>
 
       <nav className="mobile-nav">
@@ -2079,6 +2311,8 @@ export default function App() {
       {modal==='datei'&&<DateiModal/>}
       {modal==='design'&&<DesignModal/>}
       {modal==='confirm'&&<ConfirmModal/>}
+      {handoverModal&&<HandoverModal/>}
+      {showLoginNotif&&<LoginNotifPanel/>}
       {cmdOpen&&<CommandCenter/>}
       {focusTask&&<FocusMode task={focusTask}/>}
 

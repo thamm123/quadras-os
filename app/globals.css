@@ -42,7 +42,7 @@
   --sh-md: 0 8px 28px rgba(10,12,15,0.10), 0 2px 6px rgba(10,12,15,0.05);
   --sh-lg: 0 20px 56px rgba(10,12,15,0.14), 0 4px 14px rgba(10,12,15,0.06);
   --sh-xl: 0 40px 96px rgba(10,12,15,0.18), 0 8px 24px rgba(10,12,15,0.08);
-  --sh-glass: 0 1px 0 rgba(255,255,255,0.96) inset, 0 14px 44px rgba(10,12,15,0.09), 0 2px 8px rgba(10,12,15,0.04);
+  --sh-glass: 0 1px 0 rgba(255,255,255,0.98) inset, 0 -1px 0 rgba(10,12,15,0.04) inset, 0 14px 44px rgba(10,12,15,0.10), 0 2px 8px rgba(10,12,15,0.05);
   --sh-btn: 0 4px 16px rgba(10,12,15,0.24), 0 1px 0 rgba(255,255,255,0.12) inset;
   --sh-btn-hover: 0 8px 24px rgba(10,12,15,0.32), 0 1px 0 rgba(255,255,255,0.16) inset;
 
@@ -1000,3 +1000,354 @@ textarea.form-input { resize: vertical; min-height: 76px; }
 .aufgabe:focus-within .a-actions { opacity: 1; }
 .check-btn:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
 .mobile-nav-btn:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+/* ── Login Screen ─────────────────────────────────────────── */
+.login-root {
+  min-height: 100vh;
+  background: linear-gradient(160deg, #07090D 0%, #0F1520 55%, #131D2C 100%);
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--sp5); position: relative; overflow: hidden;
+}
+.login-root::before {
+  content: ''; position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.028) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,0.55), transparent 80%);
+  pointer-events: none;
+}
+.login-volt-accent {
+  position: absolute; top: -180px; left: 50%; transform: translateX(-50%);
+  width: 640px; height: 640px;
+  background: radial-gradient(circle, rgba(200,255,60,0.05) 0%, transparent 62%);
+  pointer-events: none;
+}
+.login-content { width: 100%; max-width: 380px; position: relative; z-index: 1; }
+.login-brand { text-align: center; margin-bottom: var(--sp8); }
+.login-logo {
+  font-family: var(--font-display); font-size: 22px; font-weight: 800;
+  letter-spacing: 0.28em; text-transform: uppercase; color: #fff;
+  margin-bottom: var(--sp1);
+}
+.login-tagline {
+  font-family: var(--font-mono); font-size: 10px;
+  color: rgba(255,255,255,0.28); letter-spacing: 0.16em;
+  text-transform: uppercase; font-weight: 600;
+}
+.login-card {
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(36px) saturate(180%);
+  -webkit-backdrop-filter: blur(36px) saturate(180%);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: var(--r-2xl);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.09) inset, 0 32px 80px rgba(0,0,0,0.44);
+  padding: var(--sp6);
+}
+.login-card-title {
+  font-family: var(--font-display); font-size: var(--text-lg); font-weight: 700;
+  color: #fff; margin-bottom: var(--sp5); letter-spacing: -0.3px;
+}
+.login-error {
+  background: rgba(185,28,28,0.20); border: 1px solid rgba(185,28,28,0.28);
+  color: #FCA5A5; padding: var(--sp2) var(--sp3); border-radius: var(--r-sm);
+  font-size: var(--text-sm); margin-bottom: var(--sp4); font-weight: 500;
+}
+.login-label {
+  display: block; font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  color: rgba(255,255,255,0.35); text-transform: uppercase;
+  letter-spacing: 0.12em; margin-bottom: var(--sp1);
+}
+.login-input {
+  width: 100%; padding: 11px 14px;
+  border: 1.5px solid rgba(255,255,255,0.12); border-radius: var(--r-md);
+  font-size: var(--text-sm); font-family: var(--font);
+  background: rgba(255,255,255,0.07); color: #fff; outline: none;
+  transition: border-color var(--anim-micro), box-shadow var(--anim-micro), background var(--anim-micro);
+  min-height: 44px; -webkit-appearance: none;
+}
+.login-input::placeholder { color: rgba(255,255,255,0.22); }
+.login-input:focus {
+  border-color: rgba(255,255,255,0.32);
+  background: rgba(255,255,255,0.11);
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.05);
+}
+.login-footer {
+  text-align: center; margin-top: var(--sp4);
+  font-family: var(--font-mono); font-size: 10px;
+  color: rgba(255,255,255,0.18); letter-spacing: 0.08em;
+}
+
+/* ── Sidebar Persona ──────────────────────────────────────── */
+.sidebar-persona {
+  display: flex; align-items: center; gap: var(--sp3);
+  padding: 14px 16px 8px; border-top: 1px solid var(--border);
+}
+.sidebar-persona-avatar {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 12px; font-weight: 700; flex-shrink: 0;
+  transition: box-shadow var(--anim-base);
+}
+.sidebar-persona-name {
+  font-size: var(--text-sm); font-weight: 700; letter-spacing: -0.1px;
+  transition: color var(--anim-micro);
+}
+.sidebar-persona-role {
+  font-family: var(--font-mono); font-size: 9px; color: var(--muted);
+  margin-top: 1px; text-transform: uppercase; letter-spacing: 0.07em;
+}
+.sidebar-person-switch {
+  display: flex; gap: 5px; padding: 2px 16px 10px;
+}
+.sidebar-person-btn {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 1.5px solid var(--border2); background: rgba(255,255,255,0.5);
+  color: var(--slate); font-size: 10px; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all var(--anim-spring);
+  -webkit-tap-highlight-color: transparent;
+}
+.sidebar-person-btn:hover { transform: scale(1.12); }
+.sidebar-person-btn:active { transform: scale(0.9); }
+.sidebar-person-btn.active { color: #fff; border-color: transparent; }
+
+/* ── View transition ──────────────────────────────────────── */
+.view-enter {
+  animation: viewEnter 0.20s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+@keyframes viewEnter {
+  from { opacity: 0; transform: translateY(7px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Notification icon wrappers ───────────────────────────── */
+.notif-type-icon {
+  width: 28px; height: 28px; border-radius: var(--r-sm);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 2px;
+}
+.notif-type-icon svg { width: 13px; height: 13px; }
+
+/* ── Notification items ───────────────────────────────────── */
+.notif-item {
+  display: flex; gap: var(--sp3); padding: var(--sp3) var(--sp4);
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  transition: background var(--anim-micro);
+  border-left: 3px solid transparent;
+}
+.notif-item:hover { background: rgba(10,12,15,0.03); }
+
+/* Ungelesene Notifications: weißer Hintergrund */
+.notif-item--unread {
+  background: rgba(255,255,255,0.90);
+}
+.notif-item--unread:hover { background: rgba(255,255,255,0.97); }
+
+/* Kommentar-Notifications: eigene visuelle Hierarchie */
+.notif-item--kommentar {
+  padding: var(--sp3) var(--sp4) var(--sp3) calc(var(--sp4) - 3px);
+  border-left-width: 3px;
+  border-left-style: solid;
+  border-left-color: var(--border2);
+}
+.notif-item--kommentar.notif-item--unread {
+  background: rgba(255,255,255,0.96);
+}
+
+/* Avatar des Kommentarautors */
+.notif-avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 11px; font-weight: 800; flex-shrink: 0;
+  margin-top: 2px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+}
+
+/* Comment item: Löschen-Button nur bei Hover sichtbar */
+.comment:hover .icon-btn.del { opacity: 0.6 !important; }
+.comment .icon-btn.del:hover { opacity: 1 !important; }
+
+/* Pulsierender Badge bei neuen Kommentaren */
+@keyframes badgePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(185,28,28,0.5); transform: scale(1); }
+  50%       { box-shadow: 0 0 0 5px rgba(185,28,28,0);  transform: scale(1.1); }
+}
+
+/* ── Dark mode additions ─────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  .sidebar-person-btn { background: rgba(255,255,255,0.08); color: var(--slate); }
+  .notif-item--unread { background: rgba(237,240,245,0.07); }
+  .notif-item--unread:hover { background: rgba(237,240,245,0.11); }
+  .notif-item--kommentar.notif-item--unread { background: rgba(237,240,245,0.08); }
+}
+
+/* ── Schritt 6: LoginNotifPanel & NotificationCenter Panel ──────────────── */
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(32px) scale(0.97); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+.login-notif-backdrop {
+  position: fixed; inset: 0; z-index: 9998;
+  background: rgba(0,0,0,0.28);
+  backdrop-filter: blur(2px);
+  animation: fadeIn 0.18s ease;
+}
+
+.login-notif-panel {
+  position: fixed;
+  top: 0; right: 0; bottom: 0;
+  width: 500px;
+  max-width: 100vw;
+  z-index: 9999;
+  background: rgba(10,13,20,0.82);
+  backdrop-filter: blur(48px) saturate(180%);
+  -webkit-backdrop-filter: blur(48px) saturate(180%);
+  border-left: 1px solid rgba(255,255,255,0.09);
+  box-shadow:
+    -2px 0 0 rgba(255,255,255,0.04) inset,
+    -32px 0 80px rgba(0,0,0,0.55);
+  display: flex;
+  flex-direction: column;
+  animation: slideInRight 0.30s cubic-bezier(0.34,1.36,0.64,1);
+}
+
+.login-notif-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 28px 24px 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  flex-shrink: 0;
+}
+
+.login-notif-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.92);
+  letter-spacing: -0.02em;
+  margin-bottom: 4px;
+}
+
+.login-notif-sub {
+  font-size: 12px;
+  color: rgba(255,255,255,0.40);
+  font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.login-notif-badge {
+  background: rgba(185,28,28,0.20);
+  color: #f87171;
+  border: 1px solid rgba(185,28,28,0.30);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: 0.05em;
+}
+
+.login-notif-mark-btn {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--signal);
+  background: rgba(185,228,80,0.08);
+  border: 1px solid rgba(185,228,80,0.18);
+  border-radius: 999px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: all var(--anim-micro);
+  white-space: nowrap;
+}
+.login-notif-mark-btn:hover {
+  background: rgba(185,228,80,0.15);
+  color: #b9e450;
+}
+
+.login-notif-close {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.50);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all var(--anim-micro);
+  flex-shrink: 0;
+}
+.login-notif-close:hover {
+  background: rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.85);
+}
+
+.login-notif-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 0 24px;
+}
+.login-notif-body::-webkit-scrollbar { width: 4px; }
+.login-notif-body::-webkit-scrollbar-track { background: transparent; }
+.login-notif-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+
+.login-notif-section {
+  margin-bottom: 8px;
+}
+
+.login-notif-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.30);
+  padding: 12px 24px 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.login-notif-section-count {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.45);
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.login-notif-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 24px;
+  color: rgba(255,255,255,0.25);
+  font-size: 13px;
+  text-align: center;
+  font-family: var(--font-mono);
+}
+
+/* Inside dark panel: override notif-item light theme */
+.login-notif-panel .notif-item {
+  border-bottom-color: rgba(255,255,255,0.06);
+  padding: 10px 24px;
+}
+.login-notif-panel .notif-item--unread {
+  background: rgba(255,255,255,0.06) !important;
+}
+.login-notif-panel .notif-item--unread:hover {
+  background: rgba(255,255,255,0.09) !important;
+}
+.login-notif-panel .notif-item--kommentar.notif-item--unread {
+  background: rgba(255,255,255,0.07) !important;
+}
+
+@media (max-width: 600px) {
+  .login-notif-panel { width: 100vw; }
+}
