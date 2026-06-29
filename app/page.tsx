@@ -101,11 +101,205 @@ function LoginScreen({onLogin}:{onLogin:(name:PersonName)=>void}) {
   )
 }
 
-// ── Stateless Module-level Components ────────────────────────────────────
+// ── Module-level Components (außerhalb App — stabile Referenzen) ──────────
 function SkeletonList({rows=4}:{rows?:number}) {
   return <>{Array.from({length:rows}).map((_,i)=>(
     <div key={i} className="skeleton-card"><div className="skeleton skeleton-title"/><div className="skeleton skeleton-meta"/></div>
   ))}</>
+}
+
+function NotifTypIcon({typ}:{typ:string}) {
+  const styles:Record<string,{bg:string;col:string}> = {
+    kommentar:   {bg:'rgba(29,78,216,0.12)', col:'var(--blue)'},
+    mention:     {bg:'rgba(180,83,9,0.12)',  col:'var(--amber)'},
+    zuweisung:   {bg:'rgba(26,107,70,0.12)', col:'var(--signal)'},
+    meilenstein: {bg:'rgba(200,255,60,0.15)',col:'#7aad00'},
+  }
+  const s=styles[typ]||{bg:'rgba(10,12,15,0.07)',col:'var(--mid)'}
+  const icons:Record<string,JSX.Element>={
+    kommentar:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>,
+    mention:     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 006 0v-1a10 10 0 10-3.92 7.94"/></svg>,
+    zuweisung:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
+    meilenstein: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
+  }
+  const icon=icons[typ]||<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+  return <div className="notif-type-icon" style={{background:s.bg,color:s.col}}>{icon}</div>
+}
+
+type NotifRowProps = {n:Notification;onOpen:()=>void;onDelete:()=>void;dark?:boolean}
+function NotifRow({n,onOpen,onDelete,dark=false}:NotifRowProps) {
+  const isKommentar=n.typ==='kommentar'
+  const authorColor=PERSON_HEX[n.von]||'var(--mid)'
+  const unreadBg=dark?'rgba(255,255,255,0.07)':'rgba(255,255,255,0.92)'
+  return (
+    <div
+      className={`notif-item${isKommentar?' notif-item--kommentar':''}${!n.gelesen?' notif-item--unread':''}`}
+      style={{background:!n.gelesen?unreadBg:'transparent',...(isKommentar&&!n.gelesen?{borderLeftColor:authorColor}:{})}}>
+      <div style={{flexShrink:0,cursor:'pointer'}} onClick={onOpen}>
+        {isKommentar
+          ?<div className="notif-avatar" style={{background:authorColor}}>{(n.von||'?')[0]}</div>
+          :<NotifTypIcon typ={n.typ||''}/>
+        }
+      </div>
+      <div style={{flex:1,minWidth:0,cursor:'pointer'}} onClick={onOpen}>
+        <div style={{fontSize:'var(--text-sm)',fontWeight:n.gelesen?400:700,color:dark?'rgba(255,255,255,0.92)':'var(--ink)',marginBottom:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+          {n.titel||''}
+        </div>
+        {isKommentar&&<div style={{fontSize:'var(--text-xs)',fontWeight:600,color:authorColor,marginBottom:2,fontFamily:'var(--font-mono)'}}>{n.von||''}</div>}
+        <div style={{fontSize:'var(--text-xs)',color:dark?(n.gelesen?'rgba(255,255,255,0.35)':'rgba(255,255,255,0.6)'):(n.gelesen?'var(--muted)':'var(--mid)'),lineHeight:1.4,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>
+          {isKommentar?(n.nachricht||'').replace(/^[^:]+:\s*/,''):(n.nachricht||'')}
+        </div>
+        <div style={{fontSize:10,color:dark?'rgba(255,255,255,0.28)':'var(--muted)',marginTop:3,fontFamily:'var(--font-mono)'}}>{fmtRelative(n.created_at||new Date().toISOString())}</div>
+      </div>
+      <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,flexShrink:0}}>
+        {!n.gelesen&&<div style={{width:7,height:7,borderRadius:'50%',background:isKommentar?authorColor:'var(--signal)',marginTop:4,flexShrink:0}}/>}
+        <button onClick={onDelete}
+          style={{width:20,height:20,borderRadius:'50%',border:'none',background:'transparent',cursor:'pointer',color:dark?'rgba(255,255,255,0.35)':'var(--muted)',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center',opacity:0.5}}
+          title="Löschen">×</button>
+      </div>
+    </div>
+  )
+}
+
+type LoginNotifPanelProps = {
+  mounted:boolean; notifications:Notification[]; lastLoginTs:string|null; aktiv:string
+  setShowLoginNotif:(v:boolean)=>void; setNotifications:React.Dispatch<React.SetStateAction<Notification[]>>
+  openAndMark:(n:Notification,close:()=>void)=>void; delNotif:(id:string)=>Promise<void>
+}
+function LoginNotifPanel({mounted,notifications,lastLoginTs,aktiv,setShowLoginNotif,setNotifications,openAndMark,delNotif}:LoginNotifPanelProps) {
+  const newSince=lastLoginTs
+    ?notifications.filter(n=>n.created_at>lastLoginTs)
+    :notifications.filter(n=>!n.gelesen)
+  const sektionen=[
+    {typ:'kommentar',  label:'Kommentare'},
+    {typ:'mention',    label:'Erwähnungen'},
+    {typ:'zuweisung',  label:'Zuweisungen'},
+    {typ:'meilenstein',label:'Meilensteine'},
+  ]
+  const close=()=>{
+    setShowLoginNotif(false)
+    const ids=newSince.filter(n=>!n.gelesen).map(n=>n.id)
+    if(ids.length>0){
+      setNotifications(prev=>prev.map(n=>ids.includes(n.id)?{...n,gelesen:true}:n))
+      supabase.from('notifications').update({gelesen:true}).in('id',ids)
+    }
+  }
+  if(!mounted) return null
+  return createPortal(
+    <>
+      <div className="login-notif-backdrop" onClick={close}/>
+      <div className="login-notif-panel">
+        <div className="login-notif-header">
+          <div>
+            <div className="login-notif-title">Willkommen zurück, {aktiv}</div>
+            <div className="login-notif-sub">
+              {lastLoginTs?<>Seit deinem letzten Login ({fmtRelative(lastLoginTs)})</>:'Deine Benachrichtigungen'}
+              {newSince.length>0&&<span className="login-notif-badge">{newSince.length} neu</span>}
+            </div>
+          </div>
+          <div style={{display:'flex',gap:'var(--sp2)',alignItems:'center'}}>
+            {newSince.some(n=>!n.gelesen)&&(
+              <button className="login-notif-mark-btn" onClick={async()=>{
+                const ids=newSince.filter(n=>!n.gelesen).map(n=>n.id)
+                setNotifications(prev=>prev.map(n=>ids.includes(n.id)?{...n,gelesen:true}:n))
+                if(ids.length>0) await supabase.from('notifications').update({gelesen:true}).in('id',ids)
+              }}>Alle gelesen</button>
+            )}
+            <button autoFocus className="login-notif-close" onClick={close} title="Schließen (Esc)">
+              <svg style={{width:14,height:14}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+        <div className="login-notif-body">
+          {newSince.length===0?(
+            <div className="login-notif-empty">
+              <svg style={{width:36,height:36,opacity:0.25,marginBottom:12}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+              <div>Alles auf dem neusten Stand</div>
+            </div>
+          ):(
+            sektionen.map(sek=>{
+              const items=newSince.filter(n=>n.typ===sek.typ)
+              if(items.length===0) return null
+              return (
+                <div key={sek.typ} className="login-notif-section">
+                  <div className="login-notif-section-label">{sek.label} <span className="login-notif-section-count">{items.length}</span></div>
+                  {items.map(n=>(
+                    <NotifRow key={n.id} n={n} dark onOpen={()=>openAndMark(n,close)} onDelete={()=>delNotif(n.id)}/>
+                  ))}
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
+    </>,
+    document.body
+  )
+}
+
+type NotifCenterProps = {
+  mounted:boolean; notifications:Notification[]; notifOpen:boolean
+  setNotifOpen:React.Dispatch<React.SetStateAction<boolean>>; setShowLoginNotif:(v:boolean)=>void
+  bellRef:React.RefObject<HTMLButtonElement>
+  openAndMark:(n:Notification,close:()=>void)=>void; markAllRead:()=>Promise<void>; delNotif:(id:string)=>Promise<void>
+}
+function NotificationCenter({mounted,notifications,notifOpen,setNotifOpen,setShowLoginNotif,bellRef,openAndMark,markAllRead,delNotif}:NotifCenterProps) {
+  const unread=notifications.filter(n=>!n.gelesen).length
+  const unreadAny=unread>0
+  const handleBellClick=(e:React.MouseEvent)=>{
+    e.stopPropagation()
+    setShowLoginNotif(false)
+    setNotifOpen(o=>!o)
+  }
+  if(!mounted) return null
+  const panel=notifOpen?createPortal(
+    <>
+      <div className="login-notif-backdrop" onClick={()=>setNotifOpen(false)}/>
+      <div className="login-notif-panel">
+        <div className="login-notif-header">
+          <div>
+            <div className="login-notif-title">Benachrichtigungen</div>
+            <div className="login-notif-sub">
+              {unread>0?<span className="login-notif-badge">{unread} ungelesen</span>:'Alles gelesen'}
+            </div>
+          </div>
+          <div style={{display:'flex',gap:'var(--sp2)',alignItems:'center'}}>
+            {unread>0&&<button className="login-notif-mark-btn" onClick={markAllRead}>Alle gelesen</button>}
+            <button autoFocus className="login-notif-close" onClick={()=>setNotifOpen(false)}>
+              <svg style={{width:14,height:14}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+        <div className="login-notif-body">
+          {notifications.length===0?(
+            <div className="login-notif-empty">
+              <svg style={{width:36,height:36,opacity:0.25,marginBottom:12}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+              <div>Keine Benachrichtigungen</div>
+            </div>
+          ):(
+            notifications.slice(0,30).map(n=>(
+              <NotifRow key={n.id} n={n} dark onOpen={()=>openAndMark(n,()=>setNotifOpen(false))} onDelete={()=>delNotif(n.id)}/>
+            ))
+          )}
+        </div>
+      </div>
+    </>,
+    document.body
+  ):null
+  return (
+    <div style={{position:'relative',display:'inline-block'}}>
+      <button ref={bellRef} onClick={handleBellClick}
+        style={{width:34,height:34,borderRadius:'50%',border:'1px solid var(--border2)',background:unreadAny?'var(--ink)':'rgba(255,255,255,0.7)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',position:'relative',transition:'all var(--anim-micro)',backdropFilter:'blur(8px)',color:unreadAny?'#fff':'var(--mid)'}}>
+        <svg style={{width:15,height:15,stroke:unreadAny?'#fff':'var(--mid)'}} viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+        {unreadAny&&(
+          <div style={{position:'absolute',top:-3,right:-3,width:16,height:16,borderRadius:'50%',background:'var(--red)',border:'2px solid white',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff',fontFamily:'var(--font-mono)',animation:'badgePulse 2s ease-in-out infinite'}}>
+            {unread>9?'9+':unread}
+          </div>
+        )}
+      </button>
+      {panel}
+    </div>
+  )
 }
 
 // ── Module-level constants ────────────────────────────────────────────────
@@ -1125,207 +1319,6 @@ export default function App() {
     await supabase.from('notifications').delete().eq('id',id)
   }
 
-  function NotifTypIcon({typ}:{typ:string}) {
-    const styles:Record<string,{bg:string;col:string}> = {
-      kommentar: {bg:'rgba(29,78,216,0.12)', col:'var(--blue)'},
-      mention:   {bg:'rgba(180,83,9,0.12)',  col:'var(--amber)'},
-      zuweisung: {bg:'rgba(26,107,70,0.12)', col:'var(--signal)'},
-      meilenstein:{bg:'rgba(200,255,60,0.15)',col:'#7aad00'},
-    }
-    const s=styles[typ]||{bg:'rgba(10,12,15,0.07)',col:'var(--mid)'}
-    const icons:Record<string,JSX.Element>={
-      kommentar:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>,
-      mention:    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 006 0v-1a10 10 0 10-3.92 7.94"/></svg>,
-      zuweisung:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
-      meilenstein:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
-    }
-    const icon=icons[typ]||<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-    return <div className="notif-type-icon" style={{background:s.bg,color:s.col}}>{icon}</div>
-  }
-
-  function NotifRow({n,onOpen,dark=false}:{n:Notification;onOpen:()=>void;dark?:boolean}) {
-    const isKommentar=n.typ==='kommentar'
-    const authorColor=PERSON_HEX[n.von]||'var(--mid)'
-    const unreadBg=dark?'rgba(255,255,255,0.07)':'rgba(255,255,255,0.92)'
-    const readBg='transparent'
-    return (
-      <div
-        className={`notif-item${isKommentar?' notif-item--kommentar':''}${!n.gelesen?' notif-item--unread':''}`}
-        style={{
-          background:!n.gelesen?unreadBg:readBg,
-          ...(isKommentar&&!n.gelesen?{borderLeftColor:authorColor}:{})
-        }}>
-        <div style={{flexShrink:0,cursor:'pointer'}} onClick={onOpen}>
-          {isKommentar
-            ?<div className="notif-avatar" style={{background:authorColor}}>{(n.von||'?')[0]}</div>
-            :<NotifTypIcon typ={n.typ}/>
-          }
-        </div>
-        <div style={{flex:1,minWidth:0,cursor:'pointer'}} onClick={onOpen}>
-          <div style={{fontSize:'var(--text-sm)',fontWeight:n.gelesen?400:700,color:dark?'rgba(255,255,255,0.92)':'var(--ink)',marginBottom:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-            {n.titel}
-          </div>
-          {isKommentar&&<div style={{fontSize:'var(--text-xs)',fontWeight:600,color:authorColor,marginBottom:2,fontFamily:'var(--font-mono)'}}>{n.von}</div>}
-          <div style={{fontSize:'var(--text-xs)',color:dark?(n.gelesen?'rgba(255,255,255,0.35)':'rgba(255,255,255,0.6)'):(n.gelesen?'var(--muted)':'var(--mid)'),lineHeight:1.4,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>
-            {isKommentar?(n.nachricht||'').replace(/^[^:]+:\s*/,''):(n.nachricht||'')}
-          </div>
-          <div style={{fontSize:10,color:dark?'rgba(255,255,255,0.28)':'var(--muted)',marginTop:3,fontFamily:'var(--font-mono)'}}>{fmtRelative(n.created_at)}</div>
-        </div>
-        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,flexShrink:0}}>
-          {!n.gelesen&&<div style={{width:7,height:7,borderRadius:'50%',background:isKommentar?authorColor:'var(--signal)',marginTop:4,flexShrink:0}}/>}
-          <button onClick={()=>delNotif(n.id)}
-            style={{width:20,height:20,borderRadius:'50%',border:'none',background:'transparent',cursor:'pointer',color:dark?'rgba(255,255,255,0.35)':'var(--muted)',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center',opacity:0.5}}
-            title="Löschen">×</button>
-        </div>
-      </div>
-    )
-  }
-
-  // ── Schritt 4: LoginNotifPanel — Slide-in nach Login ──────────────────────
-  function LoginNotifPanel() {
-    const newSince=lastLoginTs
-      ?notifications.filter(n=>n.created_at>lastLoginTs)
-      :notifications.filter(n=>!n.gelesen)
-
-    const sektionen=[
-      {typ:'kommentar',  label:'Kommentare',   icon:'💬'},
-      {typ:'mention',    label:'Erwähnungen',   icon:'@'},
-      {typ:'zuweisung',  label:'Zuweisungen',   icon:'→'},
-      {typ:'meilenstein',label:'Meilensteine',  icon:'★'},
-    ]
-
-    const close=()=>{
-      setShowLoginNotif(false)
-      // ungelesene als gelesen markieren
-      const ids=newSince.filter(n=>!n.gelesen).map(n=>n.id)
-      if(ids.length>0){
-        setNotifications(prev=>prev.map(n=>ids.includes(n.id)?{...n,gelesen:true}:n))
-        supabase.from('notifications').update({gelesen:true}).in('id',ids)
-      }
-    }
-
-    if(!mounted) return null
-    return createPortal(
-      <>
-        <div className="login-notif-backdrop" onClick={close}/>
-        <div className="login-notif-panel">
-          {/* Header */}
-          <div className="login-notif-header">
-            <div>
-              <div className="login-notif-title">Willkommen zurück, {aktiv}</div>
-              <div className="login-notif-sub">
-                {lastLoginTs
-                  ?<>Seit deinem letzten Login ({fmtRelative(lastLoginTs)})</>
-                  :'Deine Benachrichtigungen'
-                }
-                {newSince.length>0&&<span className="login-notif-badge">{newSince.length} neu</span>}
-              </div>
-            </div>
-            <div style={{display:'flex',gap:'var(--sp2)',alignItems:'center'}}>
-              {newSince.some(n=>!n.gelesen)&&(
-                <button className="login-notif-mark-btn" onClick={async()=>{
-                  const ids=newSince.filter(n=>!n.gelesen).map(n=>n.id)
-                  setNotifications(prev=>prev.map(n=>ids.includes(n.id)?{...n,gelesen:true}:n))
-                  if(ids.length>0) await supabase.from('notifications').update({gelesen:true}).in('id',ids)
-                }}>Alle gelesen</button>
-              )}
-              <button autoFocus className="login-notif-close" onClick={close} title="Schließen (Esc)">
-                <svg style={{width:14,height:14}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-          </div>
-
-          {/* Body */}
-          <div className="login-notif-body">
-            {newSince.length===0?(
-              <div className="login-notif-empty">
-                <svg style={{width:36,height:36,opacity:0.25,marginBottom:12}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
-                <div>Alles auf dem neusten Stand</div>
-              </div>
-            ):(
-              sektionen.map(sek=>{
-                const items=newSince.filter(n=>n.typ===sek.typ)
-                if(items.length===0) return null
-                return (
-                  <div key={sek.typ} className="login-notif-section">
-                    <div className="login-notif-section-label">{sek.label} <span className="login-notif-section-count">{items.length}</span></div>
-                    {items.map(n=>(
-                      <NotifRow key={n.id} n={n} dark={true} onOpen={()=>openAndMark(n,close)}/>
-                    ))}
-                  </div>
-                )
-              })
-            )}
-          </div>
-        </div>
-      </>,
-      document.body
-    )
-  }
-
-  // ── Schritt 5: NotificationCenter Glocke — gleiches Panel-Design ──────────
-  function NotificationCenter() {
-    const unread = notifications.filter(n=>!n.gelesen).length
-    const unreadAny = unread>0
-
-    const handleBellClick=(e:React.MouseEvent)=>{
-      e.stopPropagation()
-      setShowLoginNotif(false)
-      setNotifOpen(o=>!o)
-    }
-
-    if(!mounted) return null
-    const panel = notifOpen ? createPortal(
-      <>
-        <div className="login-notif-backdrop" onClick={()=>setNotifOpen(false)}/>
-        <div className="login-notif-panel">
-          <div className="login-notif-header">
-            <div>
-              <div className="login-notif-title">Benachrichtigungen</div>
-              <div className="login-notif-sub">
-                {unread>0?<><span className="login-notif-badge">{unread} ungelesen</span></>:'Alles gelesen'}
-              </div>
-            </div>
-            <div style={{display:'flex',gap:'var(--sp2)',alignItems:'center'}}>
-              {unread>0&&<button className="login-notif-mark-btn" onClick={markAllRead}>Alle gelesen</button>}
-              <button autoFocus className="login-notif-close" onClick={()=>setNotifOpen(false)}>
-                <svg style={{width:14,height:14}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-          </div>
-          <div className="login-notif-body">
-            {notifications.length===0?(
-              <div className="login-notif-empty">
-                <svg style={{width:36,height:36,opacity:0.25,marginBottom:12}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
-                <div>Keine Benachrichtigungen</div>
-              </div>
-            ):(
-              notifications.slice(0,30).map(n=>(
-                <NotifRow key={n.id} n={n} dark={true} onOpen={()=>openAndMark(n,()=>setNotifOpen(false))}/>
-              ))
-            )}
-          </div>
-        </div>
-      </>,
-      document.body
-    ) : null
-
-    return (
-      <div style={{position:'relative',display:'inline-block'}}>
-        <button ref={bellRef} onClick={handleBellClick}
-          style={{width:34,height:34,borderRadius:'50%',border:'1px solid var(--border2)',background:unreadAny?'var(--ink)':'rgba(255,255,255,0.7)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',position:'relative',transition:'all var(--anim-micro)',backdropFilter:'blur(8px)',color:unreadAny?'#fff':'var(--mid)'}}>
-          <svg style={{width:15,height:15,stroke:unreadAny?'#fff':'var(--mid)'}} viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
-          {unreadAny&&(
-            <div style={{position:'absolute',top:-3,right:-3,width:16,height:16,borderRadius:'50%',background:'var(--red)',border:'2px solid white',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:800,color:'#fff',fontFamily:'var(--font-mono)',animation:'badgePulse 2s ease-in-out infinite'}}>
-              {unread>9?'9+':unread}
-            </div>
-          )}
-        </button>
-        {panel}
-      </div>
-    )
-  }
-
   // ── Command Center ────────────────────────────────────────────────────────
   function CommandCenter() {
     const [q,setQ]=useState(cmdQuery)
@@ -2264,8 +2257,10 @@ export default function App() {
                 <div className="sidebar-logo-sub">Founder OS</div>
               </div>
             </div>
-            {/* NotificationCenter bell — portal panel rendered at body level */}
-            <NotificationCenter/>
+            <NotificationCenter
+              mounted={mounted} notifications={notifications} notifOpen={notifOpen}
+              setNotifOpen={setNotifOpen} setShowLoginNotif={setShowLoginNotif}
+              bellRef={bellRef} openAndMark={openAndMark} markAllRead={markAllRead} delNotif={delNotif}/>
           </div>
 
           <nav className="nav">
@@ -2335,7 +2330,10 @@ export default function App() {
       {modal==='design'&&<DesignModal/>}
       {modal==='confirm'&&<ConfirmModal/>}
       {handoverModal&&<HandoverModal/>}
-      {showLoginNotif&&<LoginNotifPanel/>}
+      {showLoginNotif&&<LoginNotifPanel
+        mounted={mounted} notifications={notifications} lastLoginTs={lastLoginTs} aktiv={aktiv}
+        setShowLoginNotif={setShowLoginNotif} setNotifications={setNotifications}
+        openAndMark={openAndMark} delNotif={delNotif}/>}
       {cmdOpen&&<CommandCenter/>}
       {focusTask&&<FocusMode task={focusTask}/>}
 
